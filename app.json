@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.volleyshoot.challenge",
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "ボレーシュートの練習のため、カメラで足の動きをリアルタイムに検出します。映像は端末内でのみ処理されます。"
+        "NSCameraUsageDescription": "ボレーシュートの練習のため、カメラで足の動きをリアルタイムに検出します。映像は端末内でのみ処理されます。",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
