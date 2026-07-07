@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "VOLLEYSHOOT CHALLENGE",
+    "slug": "volleyshoot-challenge",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "volleyshoot",
+    "splash": {
+      "backgroundColor": "#07090F"
+    },
+    "assetBundlePatterns": [
+      "assets/models/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.volleyshoot.challenge",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "ボレーシュートの練習のため、カメラで足の動きをリアルタイムに検出します。映像は端末内でのみ処理されます。"
+      }
+    },
+    "android": {
+      "package": "com.volleyshoot.challenge",
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#07090F"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "ボレーシュートの練習のため、カメラで足の動きをリアルタイムに検出します。映像は端末内でのみ処理されます。",
+          "enableCodeScanner": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "bcaa8440-ad34-4220-903a-9ba204ea06cb"
+      }
+    }
+  }
+}
