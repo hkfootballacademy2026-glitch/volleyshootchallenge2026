@@ -18,7 +18,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "ボレーシュートの練習のため、カメラで足の動きをリアルタイムに検出します。映像は端末内でのみ処理されます。",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "このアプリ本体は位置情報を使用しませんが、一部の外部ライブラリが位置情報APIを参照するため、App Store Connectの要件に合わせて利用目的を明記しています。",
+        "CFBundleDisplayName": "ボレチャレ"
       }
     },
     "android": {

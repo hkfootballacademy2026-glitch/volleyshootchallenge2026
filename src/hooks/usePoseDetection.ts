@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useTensorflowModel } from "react-native-fast-tflite";
 import { useFrameProcessor, useCameraDevice, useCameraPermission } from "react-native-vision-camera";
-import { runOnJS } from "react-native-worklets-core";
+import { runOnJS } from "react-native-reanimated";
+import { useResizePlugin } from "vision-camera-resize-plugin";
 import { FootPoint } from "../game/types";
 import { calcFootVelocity } from "../game/kickDetection";
 
-// MoveNet Lightning の出力レイアウト: [1, 1, 17, 3] = (y, x, score) × 17キーポイント
-// 参照: NATIVE_MIGRATION.md セクション2
+// MoveNet Lightning output layout: [1, 1, 17, 3] = (y, x, score) for 17 keypoints.
 const KP = { L_ANKLE: 15, R_ANKLE: 16 };
 const CONFIDENCE_THRESHOLD = 0.4;
+const MODEL_SIZE = 192;
 
 export interface DetectedFeet {
   left: FootPoint | null;
@@ -21,15 +22,11 @@ interface RawFootHistory {
   ts: number;
 }
 
-/**
- * カメラフレームからMoveNetで足首を検出し、フレーム間速度も含めて返すフック。
- * vision-cameraのフレームプロセッサはUIスレッドとは別のワーカースレッドで動くため、
- * runOnJS で結果をJSスレッド(Reactの state)に橋渡しする。
- */
 export function usePoseDetection(screenW: number, screenH: number, mirrored: boolean) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice("back");
   const model = useTensorflowModel(require("../../assets/models/movenet_singlepose_lightning_int8.tflite"));
+  const { resize } = useResizePlugin();
 
   const [feet, setFeet] = useState<DetectedFeet>({ left: null, right: null });
   const prevLeftRef = useRef<RawFootHistory | null>(null);
@@ -42,7 +39,6 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
   const handleDetection = (leftRaw: { x: number; y: number } | null, rightRaw: { x: number; y: number } | null) => {
     const now = Date.now();
     const toScreen = (p: { x: number; y: number }) => {
-      // モデル出力は正規化座標(0-1)。画面座標へ変換し、前面カメラならミラー補正。
       let x = p.x * screenW;
       const y = p.y * screenH;
       if (mirrored) x = screenW - x;
@@ -78,8 +74,13 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
       "worklet";
       if (model.state !== "loaded") return;
       try {
-        const output = model.model.runSync([frame]);
-        const kp = output[0]; // Float32Array [1,1,17,3] をフラット化したもの
+        const input = resize(frame, {
+          scale: { width: MODEL_SIZE, height: MODEL_SIZE },
+          pixelFormat: "rgb",
+          dataType: "uint8",
+        });
+        const output = model.model.runSync([input]);
+        const kp = output[0] as any;
         const readPoint = (idx: number) => {
           const base = idx * 3;
           const y = kp[base];
@@ -91,10 +92,10 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
         const right = readPoint(KP.R_ANKLE);
         runOnJS(handleDetection)(left, right);
       } catch (e) {
-        // フレーム処理中の例外はスキップ(次フレームで回復させる)
+        // Skip a bad frame; the next camera frame can recover.
       }
     },
-    [model, screenW, screenH, mirrored]
+    [model, resize, screenW, screenH, mirrored]
   );
 
   return {

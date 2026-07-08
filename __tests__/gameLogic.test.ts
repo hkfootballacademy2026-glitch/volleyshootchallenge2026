@@ -280,18 +280,18 @@ describe("goalTarget: シュート方向のミートポイント支配", () => {
 });
 
 describe("goalTarget: ゴール判定とゾーン分割", () => {
-  it("ノーマル/イージーは2x2、ハードは3x2に分割される", () => {
+  it("難易度に関係なく左・中央・右の3分割になる", () => {
     const normal = goalGeometry(400, 800, "NORMAL");
     const hard = goalGeometry(400, 800, "HARD");
-    expect(normal.cols).toBe(2);
+    expect(normal.cols).toBe(3);
     expect(hard.cols).toBe(3);
-    expect(normal.rows).toBe(2);
-    expect(hard.rows).toBe(2);
+    expect(normal.rows).toBe(1);
+    expect(hard.rows).toBe(1);
   });
 
   it("ターゲットゾーンに入ったシュートは goal 判定になる", () => {
     const geom = goalGeometry(400, 800, "NORMAL");
-    // 左上ゾーン(col0,row0)の中心付近にシュート
+    // 左ゾーンの中心付近にシュート
     const ball: Ball = {
       id: 1, kind: "SIDE", x: geom.gx + geom.gw * 0.25, y: 0, vx: 0, vy: 0,
       radius: 20, type: "NORMAL", active: true, kicked: true,
@@ -308,7 +308,7 @@ describe("goalTarget: ゴール判定とゾーン分割", () => {
       radius: 20, type: "NORMAL", active: true, kicked: true,
       kickedVx: 0, kickedVy: -2000, touchHinted: false, fade: 1,
     };
-    const outcome = resolveShotOutcome(ball, geom, 0); // ターゲットは左上だが右上に着弾
+    const outcome = resolveShotOutcome(ball, geom, 0); // ターゲットは左だが右に着弾
     expect(outcome.kind).toBe("frame");
   });
 
@@ -325,7 +325,7 @@ describe("goalTarget: ゴール判定とゾーン分割", () => {
   it("的中後は同じゾーンを連続で出さない", () => {
     let zone = 0;
     for (let i = 0; i < 20; i++) {
-      const next = rerollTarget(zone, 2, 2);
+      const next = rerollTarget(zone, 3, 1);
       expect(next).not.toBe(zone);
       zone = next;
     }

@@ -52,8 +52,8 @@ export interface GoalGeometry {
 export function goalGeometry(screenW: number, screenH: number, difficulty: Difficulty): GoalGeometry {
   const gx = screenW * 0.14, gw = screenW * 0.72;
   const gy = screenH * 0.055, gh = screenH * 0.175;
-  const cols = difficulty === "HARD" ? 3 : 2;
-  const rows = 2;
+  const cols = 3;
+  const rows = 1;
   return { gx, gy, gw, gh, cols, rows };
 }
 
@@ -71,9 +71,7 @@ export type ShotOutcome =
 export function resolveShotOutcome(ball: Ball, geom: GoalGeometry, targetZone: number): ShotOutcome {
   const col = zoneAtX(ball.x, geom);
   if (col < 0) return { kind: "miss" };
-  const rowThreshold = -1400;
-  const row = (ball.kickedVy ?? 0) < rowThreshold ? 0 : 1; // 0=上段(鋭い振り), 1=下段
-  const zone = row * geom.cols + col;
+  const zone = col;
   return zone === targetZone ? { kind: "goal", zone } : { kind: "frame", zone };
 }
 
