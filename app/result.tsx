@@ -7,6 +7,7 @@ import { calcRank } from "../src/game/kickDetection";
 import { pushScoreHistory, setHighScoreIfBetter, updateStreak } from "../src/storage/gameStorage";
 import { AdBanner } from "../src/ads/AdBanner";
 import { useResultInterstitialAd } from "../src/ads/useResultInterstitialAd";
+import { hasVideoReplay } from "../src/replay/videoReplayStore";
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function ResultScreen() {
 
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [replayReady, setReplayReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +49,7 @@ export default function ResultScreen() {
       await pushScoreHistory(gameMode, difficulty, score);
       const s = await updateStreak();
       if (!cancelled) setStreak(s);
+      if (!cancelled) setReplayReady(hasVideoReplay());
     })();
 
     return () => {
@@ -88,6 +91,11 @@ export default function ResultScreen() {
         <Pressable style={styles.btnPrimary} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty } })}>
           <Text style={styles.btnPrimaryText}>もう一度プレイ</Text>
         </Pressable>
+        {replayReady && (
+          <Pressable style={styles.btnGhost} onPress={() => router.push("/replay")}>
+            <Text style={styles.btnGhostText}>カメラリプレイを見る</Text>
+          </Pressable>
+        )}
         <Pressable style={styles.btnGhost} onPress={onShare}>
           <Text style={styles.btnGhostText}>結果をシェア</Text>
         </Pressable>

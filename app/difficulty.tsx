@@ -7,6 +7,8 @@ import { getScoreHistory, getStreak } from "../src/storage/gameStorage";
 import { ScoreHistoryEntry } from "../src/game/types";
 import { AdBanner } from "../src/ads/AdBanner";
 
+type ControlMode = "MANUAL" | "AI";
+
 const DIFF_DETAIL: Record<Difficulty, string> = {
   EASY: "60秒・大きいボール・ゆっくり",
   NORMAL: "60秒・標準サイズ・標準速度",
@@ -18,6 +20,7 @@ export default function DifficultyScreen() {
   const { mode } = useLocalSearchParams<{ mode: GameMode }>();
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const [difficulty, setDifficulty] = useState<Difficulty>("NORMAL");
+  const [controlMode, setControlMode] = useState<ControlMode>("MANUAL");
   const [history, setHistory] = useState<ScoreHistoryEntry[]>([]);
   const [streak, setStreak] = useState(0);
 
@@ -64,6 +67,23 @@ export default function DifficultyScreen() {
           ))}
         </View>
 
+        <View style={styles.controlGrid}>
+          <Pressable
+            style={[styles.controlCard, controlMode === "MANUAL" && styles.controlCardSelected]}
+            onPress={() => setControlMode("MANUAL")}
+          >
+            <Text style={styles.controlName}>通常操作</Text>
+            <Text style={styles.controlDetail}>タップ / スワイプで安定プレイ</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.controlCard, controlMode === "AI" && styles.controlCardSelected]}
+            onPress={() => setControlMode("AI")}
+          >
+            <Text style={styles.controlName}>AI足検知（試験）</Text>
+            <Text style={styles.controlDetail}>足の動きをカメラで検出</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.best5Box}>
           <Text style={styles.best5Title}>SCORE HISTORY — BEST 5</Text>
           {history.length === 0 ? (
@@ -83,7 +103,7 @@ export default function DifficultyScreen() {
 
         <Pressable
           style={styles.startBtn}
-          onPress={() => router.push({ pathname: "/game", params: { mode: gameMode, difficulty } })}
+          onPress={() => router.push({ pathname: controlMode === "AI" ? "/game-ai" : "/game", params: { mode: gameMode, difficulty } })}
         >
           <Text style={styles.startBtnText}>ゲームスタート</Text>
         </Pressable>
@@ -119,6 +139,20 @@ const styles = StyleSheet.create({
   diffDetail: { color: COLORS.mute, fontSize: 11, marginTop: 2 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.line },
   dotSelected: { backgroundColor: COLORS.cyan },
+  controlGrid: { width: "100%", maxWidth: 380, flexDirection: "row", gap: 8 },
+  controlCard: {
+    flex: 1,
+    backgroundColor: "rgba(242,245,250,0.03)",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 78,
+    justifyContent: "center",
+  },
+  controlCardSelected: { borderColor: COLORS.gold, backgroundColor: "rgba(255,197,61,0.09)" },
+  controlName: { color: COLORS.white, fontWeight: "800", fontSize: 13 },
+  controlDetail: { color: COLORS.mute, fontSize: 10.5, marginTop: 4, lineHeight: 15 },
   best5Box: {
     width: "100%", maxWidth: 380, backgroundColor: "rgba(242,245,250,0.025)",
     borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, padding: 14, gap: 5,
