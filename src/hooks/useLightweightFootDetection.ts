@@ -8,11 +8,11 @@ import { calcFootVelocity } from "../game/kickDetection";
 
 const SAMPLE_W = 96;
 const SAMPLE_H = 72;
-const FOOT_MIN_STRENGTH = 620;
-const AI_ACTIVE_MIN_SPEED = 360;
+const FOOT_MIN_STRENGTH = 520;
+const AI_ACTIVE_MIN_SPEED = 260;
 const FOOT_SPEED_SCALE = 3.1;
-const FOOT_VISIBLE_MS = 120;
-const MAX_TRACK_JUMP_PX = 260;
+const FOOT_VISIBLE_MS = 170;
+const MAX_TRACK_JUMP_PX = 340;
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 type CameraPosition = "front" | "back";
@@ -95,7 +95,7 @@ export function useLightweightFootDetection(enabled: boolean, cameraPosition: Ca
           velX: velocity.velX * FOOT_SPEED_SCALE,
           velY: velocity.velY * FOOT_SPEED_SCALE,
           side,
-          hitRadiusScale: 0.44,
+          hitRadiusScale: 0.72,
         },
       };
     };

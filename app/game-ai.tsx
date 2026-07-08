@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Dimensions, Pressable, Image, ImageSourcePropType } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Camera, useCameraFormat } from "react-native-vision-camera";
@@ -38,6 +38,7 @@ export default function AiGameScreen() {
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
   const [started, setStarted] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
   const detector = useLightweightFootDetection(started, cameraPosition);
   const format = useCameraFormat(detector.device, [
@@ -49,6 +50,7 @@ export default function AiGameScreen() {
   const recordingStartedAtRef = useRef(0);
   const recordingPromiseRef = useRef<Promise<VideoReplay | null> | null>(null);
   const resolveRecordingRef = useRef<((replay: VideoReplay | null) => void) | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const finishReplayRecording = useCallback(async () => {
     if (!recordingActiveRef.current || !cameraRef.current) return null;
@@ -137,16 +139,38 @@ export default function AiGameScreen() {
   });
 
   const toggleCamera = useCallback(() => {
-    if (started) return;
+    if (started || countdown !== null) return;
     setCameraPosition((value) => (value === "front" ? "back" : "front"));
-  }, [started]);
+  }, [started, countdown]);
 
   const beginGame = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     startReplayRecording();
     engine.start();
     setStarted(true);
   }, [engine, startReplayRecording]);
+
+  const beginCountdown = useCallback(() => {
+    if (countdown !== null) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setCountdown(3);
+  }, [countdown]);
+
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
+    countdownTimerRef.current = setTimeout(() => {
+      if (countdown > 0) {
+        setCountdown(countdown - 1);
+        Haptics.selectionAsync().catch(() => undefined);
+        return;
+      }
+      setCountdown(null);
+      beginGame();
+    }, countdown > 0 ? 800 : 350);
+    return () => {
+      if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
+    };
+  }, [beginGame, countdown]);
 
   if (!detector.hasPermission) {
     return <CenterMessage text={JP.cameraPermission} />;
@@ -187,9 +211,10 @@ export default function AiGameScreen() {
             <Text style={styles.cameraBtnText}>{JP.switchCamera}: {cameraPosition === "front" ? JP.frontCamera : JP.backCamera}</Text>
           </Pressable>
           {!!detector.initError && <Text style={styles.error}>{detector.initError}</Text>}
-          <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready} onPress={beginGame}>
-            <Text style={styles.startBtnText}>{JP.start}</Text>
+          <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready || countdown !== null} onPress={beginCountdown}>
+            <Text style={styles.startBtnText}>{countdown !== null ? "READY" : JP.start}</Text>
           </Pressable>
+          {countdown !== null && <Text style={styles.countdown}>{countdown === 0 ? "GO" : countdown}</Text>}
           <Pressable style={styles.ghostBtn} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty: diff } })}>
             <Text style={styles.ghostBtnText}>{JP.manual}</Text>
           </Pressable>
@@ -307,6 +332,7 @@ const styles = StyleSheet.create({
   startBtn: { backgroundColor: COLORS.gold, borderRadius: 10, paddingVertical: 15, paddingHorizontal: 44 },
   disabled: { opacity: 0.45 },
   startBtnText: { color: COLORS.navy, fontWeight: "900", fontSize: 16 },
+  countdown: { color: COLORS.gold, fontSize: 72, fontWeight: "900", marginTop: 4 },
   cameraBtn: { borderWidth: 1, borderColor: COLORS.cyan, borderRadius: 10, paddingVertical: 11, paddingHorizontal: 20, backgroundColor: "rgba(31,224,216,0.12)" },
   cameraBtnText: { color: COLORS.white, fontWeight: "900" },
   ghostBtn: { borderWidth: 1, borderColor: COLORS.line, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: "rgba(7,9,15,0.5)" },
