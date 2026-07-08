@@ -148,6 +148,7 @@ export function stepBall(ball: Ball, dt: number, difficulty: Difficulty, screenW
 }
 
 export function isBallOut(ball: Ball, screenW: number, screenH: number): boolean {
+  if (ball.netCaught) return true;
   if (ball.kind === "FRONT" && !ball.kicked) return ball.fade <= 0;
   return ball.x < -140 || ball.x > screenW + 140 || ball.y > screenH + 140 || ball.y < -240;
 }

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, Dimensions, Pressable, GestureResponderEvent } from "react-native";
+import { View, Text, StyleSheet, Dimensions, Pressable, GestureResponderEvent, Image, ImageSourcePropType } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Camera, useCameraDevice, useCameraFormat, useCameraPermission } from "react-native-vision-camera";
 import { Canvas, Circle, Rect, Group } from "@shopify/react-native-skia";
@@ -14,6 +14,12 @@ import { saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const MANUAL_KICK_SPEED = 1250;
 const MANUAL_KICK_DURATION_MS = 180;
+const BALL_IMAGES: Record<Ball["type"], ImageSourcePropType> = {
+  NORMAL: require("../assets/balls/ball-normal.png"),
+  GOLD: require("../assets/balls/ball-gold.png"),
+  BLUE: require("../assets/balls/ball-blue.png"),
+  BLACK: require("../assets/balls/ball-black.png"),
+};
 
 export default function GameScreen() {
   const router = useRouter();
@@ -187,10 +193,11 @@ export default function GameScreen() {
 
       <Canvas style={StyleSheet.absoluteFill}>
         {gameMode === "TARGET" && started && <GoalOverlay geom={engine.geom} targetZone={engine.targetZone} />}
-        {engine.balls.map((b) => <SoccerBall key={b.id} ball={b} />)}
         {feet.left && <FootMarker foot={feet.left} />}
         {feet.right && <FootMarker foot={feet.right} />}
       </Canvas>
+
+      {engine.balls.map((b) => <BallSprite key={b.id} ball={b} />)}
 
       {!started ? (
         <View style={styles.overlay}>
@@ -230,31 +237,29 @@ function HudCell({ label, value, color }: { label: string; value: string; color:
   );
 }
 
-function SoccerBall({ ball }: { ball: Ball }) {
-  const r = ball.radius;
-  const panel = ball.type === "BLACK" ? "#11131A" : "#111827";
-  const base = ball.type === "BLACK" ? "#2A2D35" : "#F7FAFF";
-  const seam = ball.type === "BLACK" ? "#E6F1FF" : "#D6E1F0";
-  const aura = ball.type === "GOLD" ? COLORS.gold : ball.type === "BLUE" ? "#3B9CFF" : ball.type === "BLACK" ? "#FF4757" : "rgba(255,255,255,0.55)";
+function BallSprite({ ball }: { ball: Ball }) {
+  const size = ball.radius * 2.35;
+  const glowColor = ball.type === "GOLD" ? COLORS.gold : ball.type === "BLUE" ? "#3B9CFF" : ball.type === "BLACK" ? "#FF6B2C" : "#F5F8FF";
   return (
-    <Group>
-      <Circle cx={ball.x} cy={ball.y} r={r + 7} color={aura} opacity={0.32} />
-      <Circle cx={ball.x + 3} cy={ball.y + 5} r={r + 1} color="rgba(0,0,0,0.36)" />
-      <Circle cx={ball.x} cy={ball.y} r={r} color={base} />
-      <Circle cx={ball.x} cy={ball.y} r={r * 0.36} color={panel} />
-      <Circle cx={ball.x - r * 0.58} cy={ball.y - r * 0.34} r={r * 0.23} color={panel} />
-      <Circle cx={ball.x + r * 0.58} cy={ball.y - r * 0.34} r={r * 0.23} color={panel} />
-      <Circle cx={ball.x - r * 0.42} cy={ball.y + r * 0.5} r={r * 0.2} color={panel} />
-      <Circle cx={ball.x + r * 0.42} cy={ball.y + r * 0.5} r={r * 0.2} color={panel} />
-      <Rect x={ball.x - r * 0.68} y={ball.y - 1.2} width={r * 1.36} height={2.4} color={seam} opacity={0.75} />
-      <Rect x={ball.x - 1.2} y={ball.y - r * 0.68} width={2.4} height={r * 1.36} color={seam} opacity={0.75} />
-      <Circle cx={ball.x - r * 0.28} cy={ball.y - r * 0.28} r={r * 0.08} color={seam} opacity={0.85} />
-      <Circle cx={ball.x + r * 0.28} cy={ball.y + r * 0.28} r={r * 0.08} color={seam} opacity={0.85} />
-      <Circle cx={ball.x - r * 0.22} cy={ball.y - r * 0.28} r={r * 0.08} color="rgba(255,255,255,0.75)" />
-    </Group>
+    <View
+      pointerEvents="none"
+      style={[
+        styles.ballGlow,
+        {
+          left: ball.x - size / 2,
+          top: ball.y - size / 2,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: glowColor,
+          opacity: Math.max(0.15, Math.min(1, ball.fade ?? 1)),
+        },
+      ]}
+    >
+      <Image source={BALL_IMAGES[ball.type]} style={styles.ballImage} resizeMode="cover" />
+    </View>
   );
 }
-
 function FootMarker({ foot }: { foot: { x: number; y: number; speed: number } }) {
   const armed = foot.speed >= 320;
   const color = foot.speed >= 900 ? COLORS.gold : armed ? COLORS.cyan : "rgba(31,224,216,0.4)";
@@ -354,6 +359,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     overflow: "hidden",
   },
+  ballGlow: { position: "absolute", overflow: "hidden", padding: 0, shadowColor: "#000", shadowOpacity: 0.45, shadowRadius: 8, elevation: 8 },
+  ballImage: { width: "100%", height: "100%", borderRadius: 999 },
   popup: { position: "absolute", alignItems: "center", minWidth: 72 },
   popupText: { fontSize: 18, fontWeight: "800", textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 4 },
   popupSub: { color: COLORS.white, fontSize: 10, fontWeight: "700", marginTop: 2, textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 4 },

@@ -40,6 +40,7 @@ export interface Ball {
   shotPerfect?: boolean;
   shotGrounded?: boolean;
   curveAx?: number;
+  netCaught?: boolean;
 }
 
 export interface GameSessionState {

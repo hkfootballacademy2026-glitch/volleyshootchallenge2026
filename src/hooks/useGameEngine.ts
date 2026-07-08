@@ -214,6 +214,9 @@ export function useGameEngine({ mode, difficulty, screenW, screenH, feet, onGame
           onShotMiss(ball);
           return;
         }
+        ball.netCaught = true;
+        ball.active = false;
+        ball.shotPending = false;
         const base = outcome.kind === "goal" ? 30 : 10;
         const combo = sessionRef.current.combo;
         const comboBonus = outcome.kind === "goal" ? combo * 5 : 0;
