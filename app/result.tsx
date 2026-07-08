@@ -5,6 +5,8 @@ import { COLORS } from "../src/theme";
 import { Difficulty, GameMode, DIFFICULTY_LABEL } from "../src/game/constants";
 import { calcRank } from "../src/game/kickDetection";
 import { pushScoreHistory, setHighScoreIfBetter, updateStreak } from "../src/storage/gameStorage";
+import { AdBanner } from "../src/ads/AdBanner";
+import { useResultInterstitialAd } from "../src/ads/useResultInterstitialAd";
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -13,6 +15,7 @@ export default function ResultScreen() {
     maxCombo: string; perfectCount: string; penaltyCount: string; leftHits: string; rightHits: string;
     reactionAvg: string;
   }>();
+  const showInterstitial = useResultInterstitialAd();
 
   const gameMode: GameMode = params.mode === "TARGET" ? "TARGET" : "VOLLEY";
   const difficulty: Difficulty = (params.difficulty as Difficulty) || "NORMAL";
@@ -35,15 +38,23 @@ export default function ResultScreen() {
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(showInterstitial, 800);
+
     (async () => {
       const newRecord = await setHighScoreIfBetter(gameMode, difficulty, score);
-      setIsNewRecord(newRecord);
+      if (!cancelled) setIsNewRecord(newRecord);
       await pushScoreHistory(gameMode, difficulty, score);
       const s = await updateStreak();
-      setStreak(s);
+      if (!cancelled) setStreak(s);
     })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showInterstitial]);
 
   const modeName = gameMode === "TARGET" ? "ゴールターゲット" : "ミートシュート";
   const diffName = DIFFICULTY_LABEL[difficulty];
@@ -56,33 +67,36 @@ export default function ResultScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.eyebrow}>RESULT</Text>
-      <Text style={styles.rank}>{rank}</Text>
-      <Text style={styles.score}>{score}</Text>
-      {isNewRecord && <Text style={styles.newRecord}>★ ニューレコード! ★</Text>}
-      {streak >= 2 && <Text style={styles.streak}>🔥 {streak}日連続トレーニング中!</Text>}
+    <View style={styles.page}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.eyebrow}>RESULT</Text>
+        <Text style={styles.rank}>{rank}</Text>
+        <Text style={styles.score}>{score}</Text>
+        {isNewRecord && <Text style={styles.newRecord}>★ ニューレコード! ★</Text>}
+        {streak >= 2 && <Text style={styles.streak}>🔥 {streak}日連続トレーニング中!</Text>}
 
-      <View style={styles.statsGrid}>
-        <StatBox label={gameMode === "TARGET" ? "的中数" : "成功数"} value={`${hits}/${totalBalls}`} />
-        <StatBox label={gameMode === "TARGET" ? "的中率" : "成功率"} value={`${rate}%`} />
-        <StatBox label="最大コンボ" value={String(maxCombo)} />
-        <StatBox label="PERFECT" value={String(perfectCount)} />
-        <StatBox label="黒ボール減点" value={String(penaltyCount)} color={COLORS.red} />
-        <StatBox label="左足 / 右足" value={`${leftHits} / ${rightHits}`} />
-        {reactionAvg !== null && <StatBox label="平均反応" value={`${reactionAvg.toFixed(2)}秒`} />}
-      </View>
+        <View style={styles.statsGrid}>
+          <StatBox label={gameMode === "TARGET" ? "的中数" : "成功数"} value={`${hits}/${totalBalls}`} />
+          <StatBox label={gameMode === "TARGET" ? "的中率" : "成功率"} value={`${rate}%`} />
+          <StatBox label="最大コンボ" value={String(maxCombo)} />
+          <StatBox label="PERFECT" value={String(perfectCount)} />
+          <StatBox label="黒ボール減点" value={String(penaltyCount)} color={COLORS.red} />
+          <StatBox label="左足 / 右足" value={`${leftHits} / ${rightHits}`} />
+          {reactionAvg !== null && <StatBox label="平均反応" value={`${reactionAvg.toFixed(2)}秒`} />}
+        </View>
 
-      <Pressable style={styles.btnPrimary} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty } })}>
-        <Text style={styles.btnPrimaryText}>もう一度プレイ</Text>
-      </Pressable>
-      <Pressable style={styles.btnGhost} onPress={onShare}>
-        <Text style={styles.btnGhostText}>結果をシェア</Text>
-      </Pressable>
-      <Pressable style={styles.btnGhost} onPress={() => router.replace("/")}>
-        <Text style={styles.btnGhostText}>ホームに戻る</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable style={styles.btnPrimary} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty } })}>
+          <Text style={styles.btnPrimaryText}>もう一度プレイ</Text>
+        </Pressable>
+        <Pressable style={styles.btnGhost} onPress={onShare}>
+          <Text style={styles.btnGhostText}>結果をシェア</Text>
+        </Pressable>
+        <Pressable style={styles.btnGhost} onPress={() => router.replace("/")}>
+          <Text style={styles.btnGhostText}>ホームに戻る</Text>
+        </Pressable>
+      </ScrollView>
+      <AdBanner />
+    </View>
   );
 }
 
@@ -96,6 +110,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: COLORS.navy },
   container: { flexGrow: 1, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.navy, padding: 24, gap: 12 },
   eyebrow: { color: COLORS.cyan, fontSize: 12, letterSpacing: 4, fontWeight: "700" },
   rank: { color: COLORS.gold, fontSize: 90, fontWeight: "900" },

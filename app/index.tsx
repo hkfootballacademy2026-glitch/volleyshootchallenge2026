@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { COLORS } from "../src/theme";
 import { GameMode, MODE_META } from "../src/game/constants";
+import { AdBanner } from "../src/ads/AdBanner";
 
 const MODE_ICONS: Record<GameMode, string> = { VOLLEY: "⚡", TARGET: "🎯" };
 
@@ -14,42 +15,46 @@ export default function ModeSelectScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.eyebrow}>AI FOOTBALL TRAINING</Text>
-      <Text style={styles.title}>
-        VOLLEYSHOOT{"\n"}
-        <Text style={{ color: COLORS.cyan }}>CHALLENGE</Text>
-      </Text>
-      <Text style={styles.subtitle}>
-        カメラの前に立って、画面に飛んでくるボールを実際に足で蹴ろう。AIがあなたの足の動きをリアルタイムで検出します。
-      </Text>
+    <View style={styles.page}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.eyebrow}>AI FOOTBALL TRAINING</Text>
+        <Text style={styles.title}>
+          VOLLEYSHOOT{"\n"}
+          <Text style={{ color: COLORS.cyan }}>CHALLENGE</Text>
+        </Text>
+        <Text style={styles.subtitle}>
+          カメラの前に立って、画面に飛んでくるボールを実際に足で蹴ろう。AIがあなたの足の動きをリアルタイムで検出します。
+        </Text>
 
-      <View style={styles.modeGrid}>
-        {(Object.keys(MODE_META) as GameMode[]).map((mode) => (
-          <Pressable
-            key={mode}
-            style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
-            onPress={() => selectMode(mode)}
-          >
-            <View style={styles.modeIcon}>
-              <Text style={{ fontSize: 20 }}>{MODE_ICONS[mode]}</Text>
-            </View>
-            <Text style={styles.modeTitle}>{MODE_META[mode].title}</Text>
-            <Text style={styles.modeDesc}>{MODE_META[mode].desc}</Text>
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.modeGrid}>
+          {(Object.keys(MODE_META) as GameMode[]).map((mode) => (
+            <Pressable
+              key={mode}
+              style={({ pressed }) => [styles.modeCard, pressed && styles.modeCardPressed]}
+              onPress={() => selectMode(mode)}
+            >
+              <View style={styles.modeIcon}>
+                <Text style={{ fontSize: 20 }}>{MODE_ICONS[mode]}</Text>
+              </View>
+              <Text style={styles.modeTitle}>{MODE_META[mode].title}</Text>
+              <Text style={styles.modeDesc}>{MODE_META[mode].desc}</Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.howto}>
-        <Text style={styles.howtoLine}><Text style={styles.bold}>1. </Text>スマホを床や台に立てかけて固定する</Text>
-        <Text style={styles.howtoLine}><Text style={styles.bold}>2. </Text>2〜3歩下がって、足元まで全身が映るようにする</Text>
-        <Text style={styles.howtoLine}><Text style={styles.bold}>3. </Text>ボールは足を振って蹴る!触れるだけでは無得点、速く振るとPERFECTで1.5倍</Text>
-      </View>
-    </ScrollView>
+        <View style={styles.howto}>
+          <Text style={styles.howtoLine}><Text style={styles.bold}>1. </Text>スマホを床や台に立てかけて固定する</Text>
+          <Text style={styles.howtoLine}><Text style={styles.bold}>2. </Text>2〜3歩下がって、足元まで全身が映るようにする</Text>
+          <Text style={styles.howtoLine}><Text style={styles.bold}>3. </Text>ボールは足を振って蹴る!触れるだけでは無得点、速く振るとPERFECTで1.5倍</Text>
+        </View>
+      </ScrollView>
+      <AdBanner />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: COLORS.navy },
   container: {
     flexGrow: 1, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.navy, padding: 24, gap: 16,

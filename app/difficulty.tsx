@@ -5,6 +5,7 @@ import { COLORS } from "../src/theme";
 import { Difficulty, GameMode, MODE_META, DIFFICULTY_LABEL } from "../src/game/constants";
 import { getScoreHistory, getStreak } from "../src/storage/gameStorage";
 import { ScoreHistoryEntry } from "../src/game/types";
+import { AdBanner } from "../src/ads/AdBanner";
 
 const DIFF_DETAIL: Record<Difficulty, string> = {
   EASY: "60秒・大きいボール・ゆっくり",
@@ -38,58 +39,62 @@ export default function DifficultyScreen() {
   const meta = MODE_META[gameMode];
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Pressable style={styles.backBtn} onPress={() => router.back()}>
-        <Text style={styles.backBtnText}>←</Text>
-      </Pressable>
-      <Text style={styles.eyebrow}>{gameMode === "TARGET" ? "GOAL TARGET" : "MEET SHOT"}</Text>
-      <Text style={styles.title}>{meta.title}</Text>
-      <Text style={styles.subtitle}>{meta.desc}</Text>
+    <View style={styles.page}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>←</Text>
+        </Pressable>
+        <Text style={styles.eyebrow}>{gameMode === "TARGET" ? "GOAL TARGET" : "MEET SHOT"}</Text>
+        <Text style={styles.title}>{meta.title}</Text>
+        <Text style={styles.subtitle}>{meta.desc}</Text>
 
-      <View style={styles.diffGrid}>
-        {(["EASY", "NORMAL", "HARD"] as Difficulty[]).map((d) => (
-          <Pressable
-            key={d}
-            style={[styles.diffCard, difficulty === d && styles.diffCardSelected]}
-            onPress={() => setDifficulty(d)}
-          >
-            <View>
-              <Text style={styles.diffName}>{DIFFICULTY_LABEL[d]}</Text>
-              <Text style={styles.diffDetail}>{DIFF_DETAIL[d]}</Text>
-            </View>
-            <View style={[styles.dot, difficulty === d && styles.dotSelected]} />
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.diffGrid}>
+          {(["EASY", "NORMAL", "HARD"] as Difficulty[]).map((d) => (
+            <Pressable
+              key={d}
+              style={[styles.diffCard, difficulty === d && styles.diffCardSelected]}
+              onPress={() => setDifficulty(d)}
+            >
+              <View>
+                <Text style={styles.diffName}>{DIFFICULTY_LABEL[d]}</Text>
+                <Text style={styles.diffDetail}>{DIFF_DETAIL[d]}</Text>
+              </View>
+              <View style={[styles.dot, difficulty === d && styles.dotSelected]} />
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.best5Box}>
-        <Text style={styles.best5Title}>SCORE HISTORY — BEST 5</Text>
-        {history.length === 0 ? (
-          <Text style={styles.best5Empty}>まだ記録がありません。プレーしてスコアを刻もう。</Text>
-        ) : (
-          history.map((h, i) => (
-            <View key={i} style={styles.best5Row}>
-              <Text style={[styles.best5Rank, i === 0 && { color: COLORS.gold }]}>{i + 1}</Text>
-              <Text style={styles.best5Score}>{h.score}</Text>
-              <Text style={styles.best5Date}>{h.date}</Text>
-            </View>
-          ))
-        )}
-      </View>
+        <View style={styles.best5Box}>
+          <Text style={styles.best5Title}>SCORE HISTORY — BEST 5</Text>
+          {history.length === 0 ? (
+            <Text style={styles.best5Empty}>まだ記録がありません。プレーしてスコアを刻もう。</Text>
+          ) : (
+            history.map((h, i) => (
+              <View key={i} style={styles.best5Row}>
+                <Text style={[styles.best5Rank, i === 0 && { color: COLORS.gold }]}>{i + 1}</Text>
+                <Text style={styles.best5Score}>{h.score}</Text>
+                <Text style={styles.best5Date}>{h.date}</Text>
+              </View>
+            ))
+          )}
+        </View>
 
-      {streak >= 1 && <Text style={styles.streak}>🔥 連続トレーニング {streak}日</Text>}
+        {streak >= 1 && <Text style={styles.streak}>🔥 連続トレーニング {streak}日</Text>}
 
-      <Pressable
-        style={styles.startBtn}
-        onPress={() => router.push({ pathname: "/game", params: { mode: gameMode, difficulty } })}
-      >
-        <Text style={styles.startBtnText}>ゲームスタート</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable
+          style={styles.startBtn}
+          onPress={() => router.push({ pathname: "/game", params: { mode: gameMode, difficulty } })}
+        >
+          <Text style={styles.startBtnText}>ゲームスタート</Text>
+        </Pressable>
+      </ScrollView>
+      <AdBanner />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: COLORS.navy },
   container: {
     flexGrow: 1, alignItems: "center", justifyContent: "center",
     backgroundColor: COLORS.navy, padding: 24, gap: 14,
