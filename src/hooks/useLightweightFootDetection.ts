@@ -6,13 +6,16 @@ import { useResizePlugin } from "vision-camera-resize-plugin";
 import { FootPoint } from "../game/types";
 import { calcFootVelocity } from "../game/kickDetection";
 
-const SAMPLE_W = 64;
-const SAMPLE_H = 48;
-const FOOT_MIN_PIXELS = 18;
-const FOOT_SPEED_SCALE = 2.4;
-const FOOT_VISIBLE_MS = 260;
+const SAMPLE_W = 96;
+const SAMPLE_H = 72;
+const FOOT_MIN_STRENGTH = 620;
+const AI_ACTIVE_MIN_SPEED = 360;
+const FOOT_SPEED_SCALE = 3.1;
+const FOOT_VISIBLE_MS = 120;
+const MAX_TRACK_JUMP_PX = 260;
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
+type CameraPosition = "front" | "back";
 type RawFoot = { x: number; y: number; strength: number } | null;
 type RawFrame = { left: RawFoot; right: RawFoot; frames: number; resized: number; lastError?: string };
 
@@ -24,14 +27,16 @@ export interface LightweightFootDiagnostics {
   samples: number;
   leftStrength: number;
   rightStrength: number;
+  leftRawSpeed: number;
+  rightRawSpeed: number;
   lastError: string;
   resizeReady: boolean;
   bridgeReady: boolean;
 }
 
-export function useLightweightFootDetection(enabled: boolean) {
+export function useLightweightFootDetection(enabled: boolean, cameraPosition: CameraPosition = "front") {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice("back");
+  const device = useCameraDevice(cameraPosition);
   const [feet, setFeet] = useState<DetectedFeet>({ left: null, right: null });
   const [diag, setDiag] = useState<Omit<LightweightFootDiagnostics, "resizeReady" | "bridgeReady">>({
     frames: 0,
@@ -39,9 +44,12 @@ export function useLightweightFootDetection(enabled: boolean) {
     samples: 0,
     leftStrength: 0,
     rightStrength: 0,
+    leftRawSpeed: 0,
+    rightRawSpeed: 0,
     lastError: "",
   });
   const prevRef = useRef<{ left: { x: number; y: number; ts: number } | null; right: { x: number; y: number; ts: number } | null }>({ left: null, right: null });
+  const lastActiveRef = useRef<DetectedFeet>({ left: null, right: null });
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   let resize: ReturnType<typeof useResizePlugin>["resize"] | null = null;
@@ -56,41 +64,64 @@ export function useLightweightFootDetection(enabled: boolean) {
     if (!hasPermission) requestPermission();
   }, [hasPermission, requestPermission]);
 
+  useEffect(() => {
+    prevRef.current = { left: null, right: null };
+    lastActiveRef.current = { left: null, right: null };
+    setFeet({ left: null, right: null });
+  }, [cameraPosition, enabled]);
+
   const handleFrame = useCallback((event: RawFrame) => {
     const now = Date.now();
-    const toFoot = (raw: RawFoot, side: "L" | "R"): FootPoint | null => {
-      if (!raw) return null;
-      const x = raw.x * SCREEN_W;
-      const y = Math.max(SCREEN_H * 0.38, Math.min(SCREEN_H - 58, raw.y * SCREEN_H));
+    const toFoot = (raw: RawFoot, side: "L" | "R"): { foot: FootPoint | null; rawSpeed: number } => {
+      if (!raw || raw.strength < FOOT_MIN_STRENGTH) return { foot: null, rawSpeed: 0 };
+      const normalizedX = cameraPosition === "front" ? 1 - raw.x : raw.x;
+      const x = normalizedX * SCREEN_W;
+      const y = Math.max(SCREEN_H * 0.46, Math.min(SCREEN_H - 52, raw.y * SCREEN_H));
       const prev = side === "L" ? prevRef.current.left : prevRef.current.right;
       const velocity = calcFootVelocity(x, y, prev, now);
-      const foot: FootPoint = {
-        x,
-        y,
-        speed: velocity.speed * FOOT_SPEED_SCALE,
-        velX: velocity.velX * FOOT_SPEED_SCALE,
-        velY: velocity.velY * FOOT_SPEED_SCALE,
-        side,
-      };
+      const jump = prev ? Math.hypot(x - prev.x, y - prev.y) : 0;
       if (side === "L") prevRef.current.left = { x, y, ts: now };
       else prevRef.current.right = { x, y, ts: now };
-      return foot;
+
+      const rawSpeed = velocity.speed * FOOT_SPEED_SCALE;
+      const plausible = !prev || jump <= MAX_TRACK_JUMP_PX;
+      if (!plausible || rawSpeed < AI_ACTIVE_MIN_SPEED) return { foot: null, rawSpeed };
+      return {
+        rawSpeed,
+        foot: {
+          x,
+          y,
+          speed: Math.min(1800, rawSpeed),
+          velX: velocity.velX * FOOT_SPEED_SCALE,
+          velY: velocity.velY * FOOT_SPEED_SCALE,
+          side,
+          hitRadiusScale: 0.44,
+        },
+      };
     };
 
-    const left = toFoot(event.left, "L");
-    const right = toFoot(event.right, "R");
-    setFeet({ left, right });
+    const leftResult = toFoot(event.left, "L");
+    const rightResult = toFoot(event.right, "R");
+    const active = { left: leftResult.foot, right: rightResult.foot };
+    lastActiveRef.current = active;
+    setFeet(active);
     if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-    clearTimerRef.current = setTimeout(() => setFeet({ left: null, right: null }), FOOT_VISIBLE_MS);
+    clearTimerRef.current = setTimeout(() => {
+      lastActiveRef.current = { left: null, right: null };
+      setFeet({ left: null, right: null });
+    }, FOOT_VISIBLE_MS);
+
     setDiag((prev) => ({
       frames: prev.frames + event.frames,
       resized: prev.resized + event.resized,
       samples: prev.samples + 1,
       leftStrength: event.left?.strength ?? 0,
       rightStrength: event.right?.strength ?? 0,
+      leftRawSpeed: Math.round(leftResult.rawSpeed),
+      rightRawSpeed: Math.round(rightResult.rawSpeed),
       lastError: event.lastError ?? "",
     }));
-  }, []);
+  }, [cameraPosition]);
 
   const handleFrameOnJS = useMemo(() => {
     try {
@@ -117,8 +148,9 @@ export function useLightweightFootDetection(enabled: boolean) {
         let leftY = 0;
         let rightX = 0;
         let rightY = 0;
-        const startY = Math.floor(SAMPLE_H * 0.42);
+        const startY = Math.floor(SAMPLE_H * 0.48);
         for (let y = startY; y < SAMPLE_H; y += 1) {
+          const yWeight = 0.75 + (y - startY) / Math.max(1, SAMPLE_H - startY);
           for (let x = 0; x < SAMPLE_W; x += 1) {
             const idx = (y * SAMPLE_W + x) * 3;
             const r = input[idx] ?? 0;
@@ -128,9 +160,11 @@ export function useLightweightFootDetection(enabled: boolean) {
             const min = Math.min(r, g, b);
             const brightness = (r + g + b) / 3;
             const contrast = max - min;
-            const footLike = brightness < 108 || (brightness < 150 && contrast > 42);
-            if (!footLike) continue;
-            const weight = Math.max(1, 180 - brightness + contrast * 0.4);
+            const shoeDark = brightness < 92;
+            const shoeColored = brightness < 138 && contrast > 54;
+            if (!shoeDark && !shoeColored) continue;
+            const centerBias = Math.abs(x - SAMPLE_W / 2) / (SAMPLE_W / 2);
+            const weight = Math.max(1, (170 - brightness + contrast * 0.55) * yWeight * (0.85 + centerBias * 0.2));
             if (x < SAMPLE_W / 2) {
               leftCount += weight;
               leftX += x * weight;
@@ -142,8 +176,8 @@ export function useLightweightFootDetection(enabled: boolean) {
             }
           }
         }
-        const left = leftCount > FOOT_MIN_PIXELS ? { x: leftX / leftCount / SAMPLE_W, y: leftY / leftCount / SAMPLE_H, strength: Math.round(leftCount) } : null;
-        const right = rightCount > FOOT_MIN_PIXELS ? { x: rightX / rightCount / SAMPLE_W, y: rightY / rightCount / SAMPLE_H, strength: Math.round(rightCount) } : null;
+        const left = leftCount > FOOT_MIN_STRENGTH ? { x: leftX / leftCount / SAMPLE_W, y: leftY / leftCount / SAMPLE_H, strength: Math.round(leftCount) } : null;
+        const right = rightCount > FOOT_MIN_STRENGTH ? { x: rightX / rightCount / SAMPLE_W, y: rightY / rightCount / SAMPLE_H, strength: Math.round(rightCount) } : null;
         handleFrameOnJS({ left, right, frames: 1, resized: 1, lastError: "" });
       } catch (error) {
         handleFrameOnJS({ left: null, right: null, frames: 1, resized: 0, lastError: String(error) });

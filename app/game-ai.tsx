@@ -27,6 +27,9 @@ const JP = {
   waiting: "\u5f85\u6a5f",
   start: "\u30b9\u30bf\u30fc\u30c8",
   manual: "\u901a\u5e38\u64cd\u4f5c\u3067\u30d7\u30ec\u30a4",
+  frontCamera: "\u524d\u9762\u30ab\u30e1\u30e9",
+  backCamera: "\u80cc\u9762\u30ab\u30e1\u30e9",
+  switchCamera: "\u30ab\u30e1\u30e9\u5207\u66ff",
 };
 
 export default function AiGameScreen() {
@@ -35,7 +38,8 @@ export default function AiGameScreen() {
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
   const [started, setStarted] = useState(false);
-  const detector = useLightweightFootDetection(started);
+  const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
+  const detector = useLightweightFootDetection(started, cameraPosition);
   const format = useCameraFormat(detector.device, [
     { videoResolution: { width: 720, height: 1280 } },
     { fps: 30 },
@@ -132,6 +136,11 @@ export default function AiGameScreen() {
     onGameEnd: handleGameEnd,
   });
 
+  const toggleCamera = useCallback(() => {
+    if (started) return;
+    setCameraPosition((value) => (value === "front" ? "back" : "front"));
+  }, [started]);
+
   const beginGame = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     startReplayRecording();
@@ -174,6 +183,9 @@ export default function AiGameScreen() {
           <Text style={styles.overlayTitle}>{JP.title}</Text>
           <Text style={styles.overlayText}>{JP.guide}</Text>
           <Text style={styles.status}>Camera {detector.hasPermission ? "OK" : JP.waiting} / Frame {detector.ready ? "OK" : JP.waiting}</Text>
+          <Pressable style={styles.cameraBtn} onPress={toggleCamera}>
+            <Text style={styles.cameraBtnText}>{JP.switchCamera}: {cameraPosition === "front" ? JP.frontCamera : JP.backCamera}</Text>
+          </Pressable>
           {!!detector.initError && <Text style={styles.error}>{detector.initError}</Text>}
           <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready} onPress={beginGame}>
             <Text style={styles.startBtnText}>{JP.start}</Text>
@@ -190,7 +202,7 @@ export default function AiGameScreen() {
             <HudCell label="HIT" value={String(engine.session.hits)} color={COLORS.white} />
           </View>
           <View pointerEvents="none" style={styles.aiHud}>
-            <Text style={styles.aiHudText}>AI Foot L {Math.round(detector.feet.left?.speed ?? 0)} / R {Math.round(detector.feet.right?.speed ?? 0)}</Text>
+            <Text style={styles.aiHudText}>AI Foot L {Math.round(detector.feet.left?.speed ?? 0)} / R {Math.round(detector.feet.right?.speed ?? 0)} / {cameraPosition === "front" ? JP.frontCamera : JP.backCamera}</Text>
           </View>
           {engine.popups.map((p) => (
             <View key={p.id} pointerEvents="none" style={[styles.popup, { left: p.x - 36, top: p.y - 48 }]}>
@@ -295,6 +307,8 @@ const styles = StyleSheet.create({
   startBtn: { backgroundColor: COLORS.gold, borderRadius: 10, paddingVertical: 15, paddingHorizontal: 44 },
   disabled: { opacity: 0.45 },
   startBtnText: { color: COLORS.navy, fontWeight: "900", fontSize: 16 },
+  cameraBtn: { borderWidth: 1, borderColor: COLORS.cyan, borderRadius: 10, paddingVertical: 11, paddingHorizontal: 20, backgroundColor: "rgba(31,224,216,0.12)" },
+  cameraBtnText: { color: COLORS.white, fontWeight: "900" },
   ghostBtn: { borderWidth: 1, borderColor: COLORS.line, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: "rgba(7,9,15,0.5)" },
   ghostBtnText: { color: COLORS.white, fontWeight: "800" },
   hud: { position: "absolute", top: 50, left: 14, right: 14, flexDirection: "row", justifyContent: "space-between" },

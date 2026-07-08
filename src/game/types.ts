@@ -7,6 +7,7 @@ export interface FootPoint {
   velX: number;
   velY: number;
   side: "L" | "R";
+  hitRadiusScale?: number;
 }
 
 export interface Ball {

@@ -22,7 +22,8 @@ export function checkKick(ball: Ball, foot: FootPoint, difficulty: Difficulty): 
   const cfg = DIFFICULTY_CONFIG[difficulty];
   const radiusMul = ball.type === "BLACK" ? 0.6 : 1; // 黒ボールは判定を狭く
   const dist = Math.hypot(foot.x - ball.x, foot.y - ball.y);
-  const threshold = cfg.hitRadius * radiusMul + ball.radius;
+  const footRadiusScale = foot.hitRadiusScale ?? 1;
+  const threshold = (cfg.hitRadius * radiusMul + ball.radius) * footRadiusScale;
   if (dist > threshold) return { kind: "miss" };
 
   // 正面ボレーは足が奥行き方向に動き、画面上の移動量が小さくなるため閾値を緩和

@@ -14,6 +14,9 @@ const JP = {
   stop: "診断停止",
   play: "AI足検知でプレイ",
   back: "戻る",
+  frontCamera: "前面カメラ",
+  backCamera: "背面カメラ",
+  switchCamera: "カメラ切替",
 };
 
 export default function AiFrameCheckScreen() {
@@ -22,7 +25,8 @@ export default function AiFrameCheckScreen() {
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
   const [enabled, setEnabled] = useState(false);
-  const detector = useLightweightFootDetection(enabled);
+  const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
+  const detector = useLightweightFootDetection(enabled, cameraPosition);
   const { diagnostics: diag } = detector;
 
   return (
@@ -36,15 +40,19 @@ export default function AiFrameCheckScreen() {
       </Canvas>
       <View style={styles.panel}>
         <Text style={styles.title}>{JP.title}</Text>
-        <Text style={styles.row}>Camera: {detector.hasPermission && detector.device ? "OK" : JP.waiting}</Text>
+        <Text style={styles.row}>Camera: {detector.hasPermission && detector.device ? (cameraPosition === "front" ? JP.frontCamera : JP.backCamera) : JP.waiting}</Text>
         <Text style={styles.row}>Resize plugin: {diag.resizeReady ? "OK" : "NG"}</Text>
         <Text style={styles.row}>Worklets bridge: {diag.bridgeReady ? "OK" : "NG"}</Text>
         <Text style={styles.row}>FrameProcessor: {enabled ? "ON" : "OFF"}</Text>
         <Text style={styles.counter}>Frames {diag.frames} / Resize {diag.resized} / Samples {diag.samples}</Text>
-        <Text style={styles.counter}>Left {diag.leftStrength} / Right {diag.rightStrength}</Text>
-        <Text style={styles.counter}>Speed L {Math.round(detector.feet.left?.speed ?? 0)} / R {Math.round(detector.feet.right?.speed ?? 0)}</Text>
+        <Text style={styles.counter}>Strength L {diag.leftStrength} / R {diag.rightStrength}</Text>
+        <Text style={styles.counter}>RawSpeed L {diag.leftRawSpeed} / R {diag.rightRawSpeed}</Text>
+        <Text style={styles.counter}>HitSpeed L {Math.round(detector.feet.left?.speed ?? 0)} / R {Math.round(detector.feet.right?.speed ?? 0)}</Text>
         {!!detector.initError && <Text style={styles.error}>Init: {detector.initError}</Text>}
         {!!diag.lastError && <Text style={styles.error}>Frame: {diag.lastError}</Text>}
+        <Pressable style={styles.cameraBtn} onPress={() => setCameraPosition((value) => (value === "front" ? "back" : "front"))}>
+          <Text style={styles.cameraBtnText}>{JP.switchCamera}: {cameraPosition === "front" ? JP.frontCamera : JP.backCamera}</Text>
+        </Pressable>
         <Pressable style={[styles.primary, !detector.ready && styles.disabled]} disabled={!detector.ready} onPress={() => setEnabled((v) => !v)}>
           <Text style={styles.primaryText}>{enabled ? JP.stop : JP.start}</Text>
         </Pressable>
@@ -66,6 +74,8 @@ const styles = StyleSheet.create({
   row: { color: COLORS.cyan, fontSize: 13, fontWeight: "800" },
   counter: { color: COLORS.gold, fontSize: 13, fontWeight: "900", marginTop: 3 },
   error: { color: COLORS.red, fontSize: 11, lineHeight: 16 },
+  cameraBtn: { borderWidth: 1, borderColor: COLORS.cyan, borderRadius: 10, paddingVertical: 11, alignItems: "center", backgroundColor: "rgba(31,224,216,0.12)" },
+  cameraBtnText: { color: COLORS.white, fontWeight: "900" },
   primary: { backgroundColor: COLORS.gold, borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 4 },
   play: { backgroundColor: COLORS.cyan },
   disabled: { opacity: 0.45 },
