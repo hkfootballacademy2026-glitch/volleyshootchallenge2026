@@ -1,122 +1,58 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
-import { useTensorflowModel } from "react-native-fast-tflite";
-import { Camera, useCameraDevice, useCameraPermission, useFrameProcessor } from "react-native-vision-camera";
-import { Worklets } from "react-native-worklets-core";
-import { useResizePlugin } from "vision-camera-resize-plugin";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { Camera } from "react-native-vision-camera";
+import { Canvas, Circle } from "@shopify/react-native-skia";
 import { COLORS } from "../src/theme";
+import { Difficulty, GameMode } from "../src/game/constants";
+import { useLightweightFootDetection } from "../src/hooks/useLightweightFootDetection";
 
-const MODEL_SIZE = 192;
-const REQUIRED_VALUES = 17 * 3;
-
-type DiagEvent = {
-  frames: number;
-  resized: number;
-  inferred: number;
-  ankles: number;
-  lastError: string;
+const JP = {
+  title: "3. 軽量FrameProcessor確認",
+  waiting: "待機",
+  start: "診断開始",
+  stop: "診断停止",
+  play: "AI足検知でプレイ",
+  back: "戻る",
 };
 
 export default function AiFrameCheckScreen() {
   const router = useRouter();
-  const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice("back");
-  const model = useTensorflowModel(require("../assets/models/movenet_singlepose_lightning_int8.tflite"));
+  const { mode, difficulty } = useLocalSearchParams<{ mode: GameMode; difficulty: Difficulty }>();
+  const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
+  const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
   const [enabled, setEnabled] = useState(false);
-  const [diag, setDiag] = useState<DiagEvent>({ frames: 0, resized: 0, inferred: 0, ankles: 0, lastError: "" });
-  const [initError, setInitError] = useState("");
-
-  let resize: ReturnType<typeof useResizePlugin>["resize"] | null = null;
-  try {
-    ({ resize } = useResizePlugin());
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!initError) setInitError(message);
-  }
-
-  useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
-
-  const report = useCallback((patch: Partial<DiagEvent>) => {
-    setDiag((prev) => ({
-      frames: prev.frames + (patch.frames ?? 0),
-      resized: prev.resized + (patch.resized ?? 0),
-      inferred: prev.inferred + (patch.inferred ?? 0),
-      ankles: patch.ankles ?? prev.ankles,
-      lastError: patch.lastError ?? prev.lastError,
-    }));
-  }, []);
-
-  const reportOnJS = useMemo(() => {
-    try {
-      return Worklets.createRunOnJS(report);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setInitError(message);
-      return null;
-    }
-  }, [report]);
-
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      "worklet";
-      if (!enabled || reportOnJS == null) return;
-      try {
-        reportOnJS({ frames: 1 });
-        if (model.state !== "loaded" || resize == null) return;
-        const input = resize(frame, {
-          scale: { width: MODEL_SIZE, height: MODEL_SIZE },
-          pixelFormat: "rgb",
-          dataType: "uint8",
-        });
-        reportOnJS({ frames: 1, resized: 1 });
-        const output = model.model.runSync([input]);
-        const kp = output?.[0] as ArrayLike<number> | undefined;
-        if (!kp || kp.length < REQUIRED_VALUES) {
-          reportOnJS({ frames: 1, resized: 1, inferred: 1, lastError: "keypoints missing" });
-          return;
-        }
-        const leftScore = Number(kp[15 * 3 + 2]);
-        const rightScore = Number(kp[16 * 3 + 2]);
-        const ankles = (leftScore > 0.3 ? 1 : 0) + (rightScore > 0.3 ? 1 : 0);
-        reportOnJS({ frames: 1, resized: 1, inferred: 1, ankles, lastError: "" });
-      } catch (error) {
-        reportOnJS({ frames: 1, lastError: String(error) });
-      }
-    },
-    [enabled, model, reportOnJS, resize]
-  );
-
-  const ready = hasPermission && !!device && model.state === "loaded" && !!resize && !!reportOnJS && !initError;
+  const detector = useLightweightFootDetection(enabled);
+  const { diagnostics: diag } = detector;
 
   return (
     <View style={styles.page}>
-      {hasPermission && device ? (
-        <Camera
-          style={StyleSheet.absoluteFill}
-          device={device}
-          isActive={true}
-          pixelFormat="yuv"
-          frameProcessor={enabled ? frameProcessor : undefined}
-        />
+      {detector.hasPermission && detector.device ? (
+        <Camera style={StyleSheet.absoluteFill} device={detector.device} isActive={true} pixelFormat="yuv" frameProcessor={detector.frameProcessor} />
       ) : null}
+      <Canvas pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {detector.feet.left && <Circle cx={detector.feet.left.x} cy={detector.feet.left.y} r={12} color={COLORS.cyan} />}
+        {detector.feet.right && <Circle cx={detector.feet.right.x} cy={detector.feet.right.y} r={12} color={COLORS.gold} />}
+      </Canvas>
       <View style={styles.panel}>
-        <Text style={styles.title}>3. FrameProcessor/推論確認</Text>
-        <Text style={styles.row}>Camera: {hasPermission && device ? "OK" : "待機"}</Text>
-        <Text style={styles.row}>Model: {model.state}</Text>
-        <Text style={styles.row}>Resize plugin: {resize ? "OK" : "NG"}</Text>
-        <Text style={styles.row}>Worklets bridge: {reportOnJS ? "OK" : "NG"}</Text>
+        <Text style={styles.title}>{JP.title}</Text>
+        <Text style={styles.row}>Camera: {detector.hasPermission && detector.device ? "OK" : JP.waiting}</Text>
+        <Text style={styles.row}>Resize plugin: {diag.resizeReady ? "OK" : "NG"}</Text>
+        <Text style={styles.row}>Worklets bridge: {diag.bridgeReady ? "OK" : "NG"}</Text>
         <Text style={styles.row}>FrameProcessor: {enabled ? "ON" : "OFF"}</Text>
-        <Text style={styles.counter}>Frames {diag.frames} / Resize {diag.resized} / Infer {diag.inferred} / Ankles {diag.ankles}</Text>
-        {!!initError && <Text style={styles.error}>Init: {initError}</Text>}
+        <Text style={styles.counter}>Frames {diag.frames} / Resize {diag.resized} / Samples {diag.samples}</Text>
+        <Text style={styles.counter}>Left {diag.leftStrength} / Right {diag.rightStrength}</Text>
+        <Text style={styles.counter}>Speed L {Math.round(detector.feet.left?.speed ?? 0)} / R {Math.round(detector.feet.right?.speed ?? 0)}</Text>
+        {!!detector.initError && <Text style={styles.error}>Init: {detector.initError}</Text>}
         {!!diag.lastError && <Text style={styles.error}>Frame: {diag.lastError}</Text>}
-        <Pressable style={[styles.primary, !ready && styles.disabled]} disabled={!ready} onPress={() => setEnabled((v) => !v)}>
-          <Text style={styles.primaryText}>{enabled ? "診断停止" : "診断開始"}</Text>
+        <Pressable style={[styles.primary, !detector.ready && styles.disabled]} disabled={!detector.ready} onPress={() => setEnabled((v) => !v)}>
+          <Text style={styles.primaryText}>{enabled ? JP.stop : JP.start}</Text>
+        </Pressable>
+        <Pressable style={[styles.primary, styles.play]} onPress={() => router.replace({ pathname: "/game-ai", params: { mode: gameMode, difficulty: diff, play: "1" } })}>
+          <Text style={styles.primaryText}>{JP.play}</Text>
         </Pressable>
         <Pressable style={styles.ghost} onPress={() => router.back()}>
-          <Text style={styles.ghostText}>戻る</Text>
+          <Text style={styles.ghostText}>{JP.back}</Text>
         </Pressable>
       </View>
     </View>
@@ -131,9 +67,9 @@ const styles = StyleSheet.create({
   counter: { color: COLORS.gold, fontSize: 13, fontWeight: "900", marginTop: 3 },
   error: { color: COLORS.red, fontSize: 11, lineHeight: 16 },
   primary: { backgroundColor: COLORS.gold, borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 4 },
+  play: { backgroundColor: COLORS.cyan },
   disabled: { opacity: 0.45 },
   primaryText: { color: COLORS.navy, fontWeight: "900" },
   ghost: { borderWidth: 1, borderColor: COLORS.line, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
   ghostText: { color: COLORS.white, fontWeight: "800" },
 });
-
