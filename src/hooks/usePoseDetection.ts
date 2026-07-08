@@ -28,11 +28,22 @@ interface RawFootPoint {
   y: number;
 }
 
+function formatInitError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function usePoseDetection(screenW: number, screenH: number, mirrored: boolean) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice("back");
   const model = useTensorflowModel(require("../../assets/models/movenet_singlepose_lightning_int8.tflite"));
-  const { resize } = useResizePlugin();
+
+  let resize: ReturnType<typeof useResizePlugin>["resize"] | null = null;
+  let initError: string | null = null;
+  try {
+    ({ resize } = useResizePlugin());
+  } catch (error) {
+    initError = formatInitError(error);
+  }
 
   const [feet, setFeet] = useState<DetectedFeet>({ left: null, right: null });
   const prevLeftRef = useRef<RawFootHistory | null>(null);
@@ -78,45 +89,59 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
     [mirrored, screenH, screenW]
   );
 
-  const handleDetectionOnJS = useMemo(() => Worklets.createRunOnJS(handleDetection), [handleDetection]);
+  const handleDetectionOnJS = useMemo(() => {
+    try {
+      return Worklets.createRunOnJS(handleDetection);
+    } catch {
+      return null;
+    }
+  }, [handleDetection]);
 
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      "worklet";
-      if (model.state !== "loaded") return;
-      try {
-        const input = resize(frame, {
-          scale: { width: MODEL_SIZE, height: MODEL_SIZE },
-          pixelFormat: "rgb",
-          dataType: "uint8",
-        });
-        const output = model.model.runSync([input]);
-        const kp = output?.[0] as ArrayLike<number> | undefined;
-        if (!kp || kp.length < REQUIRED_KEYPOINT_VALUES) return;
+  let frameProcessor: ReturnType<typeof useFrameProcessor> | undefined;
+  try {
+    frameProcessor = useFrameProcessor(
+      (frame) => {
+        "worklet";
+        if (model.state !== "loaded") return;
+        if (resize == null || handleDetectionOnJS == null) return;
+        try {
+          const input = resize(frame, {
+            scale: { width: MODEL_SIZE, height: MODEL_SIZE },
+            pixelFormat: "rgb",
+            dataType: "uint8",
+          });
+          const output = model.model.runSync([input]);
+          const kp = output?.[0] as ArrayLike<number> | undefined;
+          if (!kp || kp.length < REQUIRED_KEYPOINT_VALUES) return;
 
-        const readPoint = (idx: number) => {
-          const base = idx * 3;
-          const y = Number(kp[base]);
-          const x = Number(kp[base + 1]);
-          const score = Number(kp[base + 2]);
-          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(score)) return null;
-          return score > CONFIDENCE_THRESHOLD ? { x, y } : null;
-        };
-        const left = readPoint(KP.L_ANKLE);
-        const right = readPoint(KP.R_ANKLE);
-        handleDetectionOnJS(left, right);
-      } catch (e) {
-        // Skip a bad frame; the next camera frame can recover.
-      }
-    },
-    [handleDetectionOnJS, model, resize]
-  );
+          const readPoint = (idx: number) => {
+            const base = idx * 3;
+            const y = Number(kp[base]);
+            const x = Number(kp[base + 1]);
+            const score = Number(kp[base + 2]);
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(score)) return null;
+            return score > CONFIDENCE_THRESHOLD ? { x, y } : null;
+          };
+          const left = readPoint(KP.L_ANKLE);
+          const right = readPoint(KP.R_ANKLE);
+          handleDetectionOnJS(left, right);
+        } catch (e) {
+          // Skip a bad frame; the next camera frame can recover.
+        }
+      },
+      [handleDetectionOnJS, model, resize]
+    );
+  } catch (error) {
+    initError ??= formatInitError(error);
+    frameProcessor = undefined;
+  }
 
   return {
     hasPermission,
     device,
     modelLoaded: model.state === "loaded",
     modelError: model.state === "error" ? model.error : null,
+    initError,
     frameProcessor,
     feet,
   };

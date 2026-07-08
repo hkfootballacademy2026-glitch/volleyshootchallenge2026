@@ -19,7 +19,7 @@ export default function GameScreen() {
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
 
   const [mirrored] = useState(false);
-  const { hasPermission, device, modelLoaded, modelError, frameProcessor, feet } =
+  const { hasPermission, device, modelLoaded, modelError, initError, frameProcessor, feet } =
     usePoseDetection(SCREEN_W, SCREEN_H, mirrored);
 
   const handleGameEnd = useCallback(
@@ -78,6 +78,13 @@ export default function GameScreen() {
       </View>
     );
   }
+  if (initError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.msg}>カメラAI機能の初期化に失敗しました: {initError}</Text>
+      </View>
+    );
+  }
   if (modelError) {
     return (
       <View style={styles.center}>
@@ -92,14 +99,12 @@ export default function GameScreen() {
         style={StyleSheet.absoluteFill}
         device={device}
         isActive={true}
-        frameProcessor={modelLoaded ? frameProcessor : undefined}
+        frameProcessor={modelLoaded && frameProcessor ? frameProcessor : undefined}
         pixelFormat="yuv"
       />
 
       <Canvas style={StyleSheet.absoluteFill}>
-        {gameMode === "TARGET" && started && (
-          <GoalOverlay geom={engine.geom} targetZone={engine.targetZone} />
-        )}
+        {gameMode === "TARGET" && started && <GoalOverlay geom={engine.geom} targetZone={engine.targetZone} />}
         {engine.balls.map((b) => (
           <Circle key={b.id} cx={b.x} cy={b.y} r={b.radius} color={BALL_TYPE_CONFIG[b.type].color} />
         ))}
@@ -110,7 +115,7 @@ export default function GameScreen() {
       {!started ? (
         <View style={styles.overlay}>
           <Text style={styles.overlayTitle}>
-            {!modelLoaded ? "AIモデルを読み込み中…" : "全身がカメラに映る位置に立ってください"}
+            {!modelLoaded ? "AIモデルを読み込み中..." : "全身がカメラに映る位置に立ってください"}
           </Text>
           {modelLoaded && (
             <Pressable
@@ -118,7 +123,7 @@ export default function GameScreen() {
               onPress={beginCountdown}
               disabled={!bothFeetVisible}
             >
-              <Text style={styles.startBtnText}>{bothFeetVisible ? "スタート" : "両足を検出中…"}</Text>
+              <Text style={styles.startBtnText}>{bothFeetVisible ? "スタート" : "両足を検出中..."}</Text>
             </Pressable>
           )}
         </View>
