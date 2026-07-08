@@ -24,6 +24,9 @@
       "autoIncrement": true,
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     }
   },
