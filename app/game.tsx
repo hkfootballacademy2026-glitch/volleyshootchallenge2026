@@ -1,16 +1,18 @@
-import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, Dimensions, Pressable } from "react-native";
+import React, { useState, useCallback, useRef } from "react";
+import { View, Text, StyleSheet, Dimensions, Pressable, GestureResponderEvent } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Camera } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraPermission } from "react-native-vision-camera";
 import { Canvas, Circle, Rect, Group } from "@shopify/react-native-skia";
 import * as Haptics from "expo-haptics";
 import { COLORS } from "../src/theme";
 import { Difficulty, GameMode, BALL_TYPE_CONFIG } from "../src/game/constants";
-import { usePoseDetection } from "../src/hooks/usePoseDetection";
 import { useGameEngine } from "../src/hooks/useGameEngine";
-import { GameSessionState } from "../src/game/types";
+import { FootPoint, GameSessionState } from "../src/game/types";
+import type { DetectedFeet } from "../src/hooks/usePoseDetection";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const MANUAL_KICK_SPEED = 1250;
+const MANUAL_KICK_DURATION_MS = 180;
 
 export default function GameScreen() {
   const router = useRouter();
@@ -18,9 +20,15 @@ export default function GameScreen() {
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
 
-  const [mirrored] = useState(false);
-  const { hasPermission, device, modelLoaded, modelError, initError, frameProcessor, feet } =
-    usePoseDetection(SCREEN_W, SCREEN_H, mirrored);
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice("back");
+  const [feet, setFeet] = useState<DetectedFeet>({ left: null, right: null });
+  const [started, setStarted] = useState(false);
+  const kickReleaseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (!hasPermission) requestPermission();
+  }, [hasPermission, requestPermission]);
 
   const handleGameEnd = useCallback(
     (session: GameSessionState) => {
@@ -55,14 +63,28 @@ export default function GameScreen() {
     onGameEnd: handleGameEnd,
   });
 
-  const [started, setStarted] = useState(false);
-  const bothFeetVisible = !!feet.left && !!feet.right;
-
   const beginCountdown = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     engine.start();
     setStarted(true);
   }, [engine]);
+
+  const setManualKick = useCallback((event: GestureResponderEvent) => {
+    if (!started) return;
+    const { locationX, locationY } = event.nativeEvent;
+    const side: "L" | "R" = locationX < SCREEN_W / 2 ? "L" : "R";
+    const foot: FootPoint = {
+      x: locationX,
+      y: Math.min(SCREEN_H - 80, Math.max(SCREEN_H * 0.42, locationY)),
+      speed: MANUAL_KICK_SPEED,
+      velX: side === "L" ? 420 : -420,
+      velY: -MANUAL_KICK_SPEED,
+      side,
+    };
+    setFeet(side === "L" ? { left: foot, right: null } : { left: null, right: foot });
+    if (kickReleaseRef.current) clearTimeout(kickReleaseRef.current);
+    kickReleaseRef.current = setTimeout(() => setFeet({ left: null, right: null }), MANUAL_KICK_DURATION_MS);
+  }, [started]);
 
   if (!hasPermission) {
     return (
@@ -78,30 +100,16 @@ export default function GameScreen() {
       </View>
     );
   }
-  if (initError) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.msg}>カメラAI機能の初期化に失敗しました: {initError}</Text>
-      </View>
-    );
-  }
-  if (modelError) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.msg}>AIモデルの読み込みに失敗しました: {String(modelError)}</Text>
-      </View>
-    );
-  }
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={true}
-        frameProcessor={modelLoaded && frameProcessor ? frameProcessor : undefined}
-        pixelFormat="yuv"
-      />
+    <View
+      style={StyleSheet.absoluteFill}
+      onStartShouldSetResponder={() => started}
+      onMoveShouldSetResponder={() => started}
+      onResponderGrant={setManualKick}
+      onResponderMove={setManualKick}
+    >
+      <Camera style={StyleSheet.absoluteFill} device={device} isActive={true} pixelFormat="yuv" />
 
       <Canvas style={StyleSheet.absoluteFill}>
         {gameMode === "TARGET" && started && <GoalOverlay geom={engine.geom} targetZone={engine.targetZone} />}
@@ -114,18 +122,10 @@ export default function GameScreen() {
 
       {!started ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayTitle}>
-            {!modelLoaded ? "AIモデルを読み込み中..." : "全身がカメラに映る位置に立ってください"}
-          </Text>
-          {modelLoaded && (
-            <Pressable
-              style={[styles.startBtn, !bothFeetVisible && styles.startBtnDisabled]}
-              onPress={beginCountdown}
-              disabled={!bothFeetVisible}
-            >
-              <Text style={styles.startBtnText}>{bothFeetVisible ? "スタート" : "両足を検出中..."}</Text>
-            </Pressable>
-          )}
+          <Text style={styles.overlayTitle}>ゲーム中は画面下をタップ/スワイプしてキックします</Text>
+          <Pressable style={styles.startBtn} onPress={beginCountdown}>
+            <Text style={styles.startBtnText}>スタート</Text>
+          </Pressable>
         </View>
       ) : (
         <>
@@ -133,6 +133,9 @@ export default function GameScreen() {
             <HudCell label="SCORE" value={String(engine.session.score)} color={COLORS.gold} />
             <HudCell label="TIME" value={String(engine.timeRemaining)} color={engine.timeRemaining <= 10 ? COLORS.red : COLORS.white} />
             <HudCell label="HIT" value={String(engine.session.hits)} color={COLORS.white} />
+          </View>
+          <View pointerEvents="none" style={styles.kickGuide}>
+            <Text style={styles.kickGuideText}>画面下をスワイプしてキック</Text>
           </View>
           {engine.popups.map((p) => (
             <View key={p.id} pointerEvents="none" style={[styles.popup, { left: p.x - 36, top: p.y - 48 }]}>
@@ -202,13 +205,12 @@ const styles = StyleSheet.create({
     inset: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(7,9,15,0.55)",
+    backgroundColor: "rgba(7,9,15,0.58)",
     gap: 16,
     padding: 24,
   } as any,
   overlayTitle: { color: COLORS.white, fontSize: 16, fontWeight: "700", textAlign: "center" },
   startBtn: { backgroundColor: COLORS.gold, borderRadius: 10, paddingVertical: 15, paddingHorizontal: 40 },
-  startBtnDisabled: { opacity: 0.4 },
   startBtnText: { color: COLORS.navy, fontWeight: "700", fontSize: 16 },
   hud: { position: "absolute", top: 50, left: 14, right: 14, flexDirection: "row", justifyContent: "space-between" },
   hudCell: {
@@ -223,6 +225,17 @@ const styles = StyleSheet.create({
   },
   hudLabel: { color: COLORS.mute, fontSize: 10, letterSpacing: 2, fontWeight: "700" },
   hudValue: { fontSize: 22, fontWeight: "800", marginTop: 2 },
+  kickGuide: { position: "absolute", left: 0, right: 0, bottom: 28, alignItems: "center" },
+  kickGuideText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: "700",
+    backgroundColor: "rgba(7,9,15,0.65)",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    overflow: "hidden",
+  },
   popup: { position: "absolute", alignItems: "center", minWidth: 72 },
   popupText: { fontSize: 18, fontWeight: "800", textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 4 },
   popupSub: { color: COLORS.white, fontSize: 10, fontWeight: "700", marginTop: 2, textShadowColor: "rgba(0,0,0,0.45)", textShadowRadius: 4 },

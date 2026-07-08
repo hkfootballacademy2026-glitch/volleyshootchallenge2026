@@ -4,7 +4,7 @@ import { Ball, FootPoint, GameSessionState, createInitialSession } from "../game
 import { spawnBall, stepBall, isBallOut, resetBallIdCounter } from "../game/physics";
 import { checkKick, calcKickScore, calcBlackPenalty, calcBlackThroughBonus } from "../game/kickDetection";
 import { resolveShotVector, goalGeometry, resolveShotOutcome, rerollTarget } from "../game/goalTarget";
-import { DetectedFeet } from "./usePoseDetection";
+import type { DetectedFeet } from "./usePoseDetection";
 
 export type PopupEvent = { id: number; x: number; y: number; text: string; sub?: string; color: string; bornAt: number };
 
