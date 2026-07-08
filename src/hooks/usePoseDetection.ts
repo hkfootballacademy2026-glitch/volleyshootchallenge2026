@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTensorflowModel } from "react-native-fast-tflite";
 import { useFrameProcessor, useCameraDevice, useCameraPermission } from "react-native-vision-camera";
-import { runOnJS } from "react-native-reanimated";
+import { Worklets } from "react-native-worklets-core";
 import { useResizePlugin } from "vision-camera-resize-plugin";
 import { FootPoint } from "../game/types";
 import { calcFootVelocity } from "../game/kickDetection";
@@ -10,6 +10,7 @@ import { calcFootVelocity } from "../game/kickDetection";
 const KP = { L_ANKLE: 15, R_ANKLE: 16 };
 const CONFIDENCE_THRESHOLD = 0.4;
 const MODEL_SIZE = 192;
+const REQUIRED_KEYPOINT_VALUES = 17 * 3;
 
 export interface DetectedFeet {
   left: FootPoint | null;
@@ -20,6 +21,11 @@ interface RawFootHistory {
   x: number;
   y: number;
   ts: number;
+}
+
+interface RawFootPoint {
+  x: number;
+  y: number;
 }
 
 export function usePoseDetection(screenW: number, screenH: number, mirrored: boolean) {
@@ -36,38 +42,43 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
     if (!hasPermission) requestPermission();
   }, [hasPermission, requestPermission]);
 
-  const handleDetection = (leftRaw: { x: number; y: number } | null, rightRaw: { x: number; y: number } | null) => {
-    const now = Date.now();
-    const toScreen = (p: { x: number; y: number }) => {
-      let x = p.x * screenW;
-      const y = p.y * screenH;
-      if (mirrored) x = screenW - x;
-      return { x, y };
-    };
+  const handleDetection = useCallback(
+    (leftRaw: RawFootPoint | null, rightRaw: RawFootPoint | null) => {
+      const now = Date.now();
+      const toScreen = (p: RawFootPoint) => {
+        let x = p.x * screenW;
+        const y = p.y * screenH;
+        if (mirrored) x = screenW - x;
+        return { x, y };
+      };
 
-    let left: FootPoint | null = null;
-    let right: FootPoint | null = null;
+      let left: FootPoint | null = null;
+      let right: FootPoint | null = null;
 
-    if (leftRaw) {
-      const pt = toScreen(leftRaw);
-      const v = calcFootVelocity(pt.x, pt.y, prevLeftRef.current, now);
-      left = { x: pt.x, y: pt.y, side: "L", ...v };
-      prevLeftRef.current = { x: pt.x, y: pt.y, ts: now };
-    } else {
-      prevLeftRef.current = null;
-    }
+      if (leftRaw) {
+        const pt = toScreen(leftRaw);
+        const v = calcFootVelocity(pt.x, pt.y, prevLeftRef.current, now);
+        left = { x: pt.x, y: pt.y, side: "L", ...v };
+        prevLeftRef.current = { x: pt.x, y: pt.y, ts: now };
+      } else {
+        prevLeftRef.current = null;
+      }
 
-    if (rightRaw) {
-      const pt = toScreen(rightRaw);
-      const v = calcFootVelocity(pt.x, pt.y, prevRightRef.current, now);
-      right = { x: pt.x, y: pt.y, side: "R", ...v };
-      prevRightRef.current = { x: pt.x, y: pt.y, ts: now };
-    } else {
-      prevRightRef.current = null;
-    }
+      if (rightRaw) {
+        const pt = toScreen(rightRaw);
+        const v = calcFootVelocity(pt.x, pt.y, prevRightRef.current, now);
+        right = { x: pt.x, y: pt.y, side: "R", ...v };
+        prevRightRef.current = { x: pt.x, y: pt.y, ts: now };
+      } else {
+        prevRightRef.current = null;
+      }
 
-    setFeet({ left, right });
-  };
+      setFeet({ left, right });
+    },
+    [mirrored, screenH, screenW]
+  );
+
+  const handleDetectionOnJS = useMemo(() => Worklets.createRunOnJS(handleDetection), [handleDetection]);
 
   const frameProcessor = useFrameProcessor(
     (frame) => {
@@ -80,22 +91,25 @@ export function usePoseDetection(screenW: number, screenH: number, mirrored: boo
           dataType: "uint8",
         });
         const output = model.model.runSync([input]);
-        const kp = output[0] as any;
+        const kp = output?.[0] as ArrayLike<number> | undefined;
+        if (!kp || kp.length < REQUIRED_KEYPOINT_VALUES) return;
+
         const readPoint = (idx: number) => {
           const base = idx * 3;
-          const y = kp[base];
-          const x = kp[base + 1];
-          const score = kp[base + 2];
+          const y = Number(kp[base]);
+          const x = Number(kp[base + 1]);
+          const score = Number(kp[base + 2]);
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(score)) return null;
           return score > CONFIDENCE_THRESHOLD ? { x, y } : null;
         };
         const left = readPoint(KP.L_ANKLE);
         const right = readPoint(KP.R_ANKLE);
-        runOnJS(handleDetection)(left, right);
+        handleDetectionOnJS(left, right);
       } catch (e) {
         // Skip a bad frame; the next camera frame can recover.
       }
     },
-    [model, resize, screenW, screenH, mirrored]
+    [handleDetectionOnJS, model, resize]
   );
 
   return {
