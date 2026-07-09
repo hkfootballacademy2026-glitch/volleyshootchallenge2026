@@ -1,4 +1,4 @@
-import { Difficulty, DIFFICULTY_CONFIG, SHOT_WEIGHT_CONTACT, SHOT_WEIGHT_SWING, SHOT_WEIGHT_REFLECT } from "./constants";
+import { Difficulty, SHOT_WEIGHT_CONTACT, SHOT_WEIGHT_SWING, SHOT_WEIGHT_REFLECT } from "./constants";
 import { Ball, FootPoint } from "./types";
 
 function normalize(x: number, y: number): { x: number; y: number } | null {
@@ -6,11 +6,6 @@ function normalize(x: number, y: number): { x: number; y: number } | null {
   return m > 1 ? { x: x / m, y: y / m } : null;
 }
 
-/**
- * ボールのどこを叩いたか(ミートポイント) + 振り抜き方向 + 入射反射、
- * の3要素をブレンドしてシュート方向・威力を決定する。
- * 実サッカーの「ボールのどこを叩くかで方向が決まる」感覚を再現する。
- */
 export function resolveShotVector(ball: Ball, foot: FootPoint): { vx: number; vy: number; grounded: boolean } {
   const contactN = normalize(ball.x - foot.x, ball.y - foot.y);
   const swingN = normalize(foot.velX, foot.velY);
@@ -23,38 +18,39 @@ export function resolveShotVector(ball: Ball, foot: FootPoint): { vx: number; vy
     reflectN = normalize(inVx - 2 * dot * contactN.x, inVy - 2 * dot * contactN.y);
   }
 
-  let dx = 0, dy = 0;
+  let dx = 0;
+  let dy = 0;
   if (contactN) { dx += contactN.x * SHOT_WEIGHT_CONTACT; dy += contactN.y * SHOT_WEIGHT_CONTACT; }
   if (swingN) { dx += swingN.x * SHOT_WEIGHT_SWING; dy += swingN.y * SHOT_WEIGHT_SWING; }
   if (reflectN) { dx += reflectN.x * SHOT_WEIGHT_REFLECT; dy += reflectN.y * SHOT_WEIGHT_REFLECT; }
-  const dir = normalize(dx * 1000, dy * 1000) ?? swingN ?? { x: 0, y: -1 };
+  const dir = normalize(dx * 1000, dy * 1000) ?? swingN ?? { x: 0, y: 1 };
 
-  // 正面ボレーは画面上のスイング速度が過小評価されるため補正
   const speedBoost = ball.kind === "FRONT" ? 1.6 : 1;
   const mag = Math.max(1, foot.speed * speedBoost);
   const shotSpeed = (900 + Math.min(2600, mag * 1.1)) / 2;
 
-  let kickedVx = dir.x * shotSpeed * 0.75;
-  let kickedVy = dir.y * shotSpeed;
-  let grounded = false;
-  if (kickedVy > -100) {
-    // ボールの上を叩いた/振り上げ不足 → ゴールに届かない(叩きつけ)
-    kickedVy = 150;
-    grounded = true;
-  }
-  return { vx: kickedVx, vy: kickedVy, grounded };
+  const kickedVx = dir.x * shotSpeed * 0.95;
+  const forwardVy = Math.max(520, Math.abs(dir.y) * shotSpeed * 0.35 + shotSpeed * 0.55);
+  const grounded = foot.speed < 460;
+  return { vx: kickedVx, vy: forwardVy, grounded };
 }
 
 export interface GoalGeometry {
-  gx: number; gy: number; gw: number; gh: number; cols: number; rows: number;
+  gx: number;
+  gy: number;
+  gw: number;
+  gh: number;
+  cols: number;
+  rows: number;
 }
 
 export function goalGeometry(screenW: number, screenH: number, difficulty: Difficulty): GoalGeometry {
-  const gx = screenW * 0.14, gw = screenW * 0.72;
-  const gy = screenH * 0.055, gh = screenH * 0.175;
-  const cols = 3;
-  const rows = 1;
-  return { gx, gy, gw, gh, cols, rows };
+  void difficulty;
+  const gw = screenW * 0.8;
+  const gx = (screenW - gw) / 2;
+  const gy = screenH * 0.64;
+  const gh = screenH * 0.22;
+  return { gx, gy, gw, gh, cols: 3, rows: 1 };
 }
 
 export function zoneAtX(x: number, geom: GoalGeometry): number {
@@ -64,15 +60,13 @@ export function zoneAtX(x: number, geom: GoalGeometry): number {
 
 export type ShotOutcome =
   | { kind: "goal"; zone: number }
-  | { kind: "frame"; zone: number }
+  | { kind: "save"; zone: number }
   | { kind: "miss" };
 
-/** シュートがゴールライン(枠の下辺)を横切った瞬間の判定 */
-export function resolveShotOutcome(ball: Ball, geom: GoalGeometry, targetZone: number): ShotOutcome {
-  const col = zoneAtX(ball.x, geom);
-  if (col < 0) return { kind: "miss" };
-  const zone = col;
-  return zone === targetZone ? { kind: "goal", zone } : { kind: "frame", zone };
+export function resolveShotOutcome(ball: Ball, geom: GoalGeometry, keeperZone: number): ShotOutcome {
+  const zone = zoneAtX(ball.x, geom);
+  if (zone < 0) return { kind: "miss" };
+  return zone === keeperZone ? { kind: "save", zone } : { kind: "goal", zone };
 }
 
 export function rerollTarget(currentZone: number, cols: number, rows: number): number {

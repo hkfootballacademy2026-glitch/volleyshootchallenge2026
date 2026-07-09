@@ -114,8 +114,9 @@ export function useGameEngine({ mode, difficulty, screenW, screenH, feet, onGame
         if (b.shotPending && mode === "TARGET" && b.kicked) {
           const prevY = b.y;
           stepBall(b, dt, difficulty, screenW, screenH, nowMs);
-          const lineY = geom.gy + geom.gh;
-          if (prevY > lineY && b.y <= lineY) {
+          const lineY = geom.gy + geom.gh * 0.45;
+          const crossedNearGoal = b.kickedVy >= 0 ? (prevY < lineY && b.y >= lineY) || prevY >= lineY : prevY > lineY && b.y <= lineY;
+          if (crossedNearGoal) {
             b.shotPending = false;
             resolveShot(b, nowMs);
           }
@@ -215,27 +216,33 @@ export function useGameEngine({ mode, difficulty, screenW, screenH, feet, onGame
           return;
         }
         ball.netCaught = true;
+        ball.netCaughtAt = t;
         ball.active = false;
         ball.shotPending = false;
-        const base = outcome.kind === "goal" ? 30 : 10;
-        const combo = sessionRef.current.combo;
-        const comboBonus = outcome.kind === "goal" ? combo * 5 : 0;
-        const pts = Math.round(base * cfg2.multiplier * (ball.shotPerfect ? 1.5 : 1) + comboBonus);
+        ball.kickedVx = 0;
+        ball.kickedVy = 0;
+        ball.fade = 1;
         if (outcome.kind === "goal") {
-          setSession((s) => {
-            const newCombo = s.combo + 1;
+          const combo = sessionRef.current.combo;
+          const pts = Math.round((30 * cfg2.multiplier * (ball.shotPerfect ? 1.5 : 1)) + combo * 5);
+          setSession((state) => {
+            const newCombo = state.combo + 1;
             return {
-              ...s, score: s.score + pts, hits: s.hits + 1, combo: newCombo,
-              maxCombo: Math.max(s.maxCombo, newCombo),
-              perfectCount: s.perfectCount + (ball.shotPerfect ? 1 : 0),
-              goalOnTarget: s.goalOnTarget + 1,
+              ...state,
+              score: state.score + pts,
+              hits: state.hits + 1,
+              combo: newCombo,
+              maxCombo: Math.max(state.maxCombo, newCombo),
+              perfectCount: state.perfectCount + (ball.shotPerfect ? 1 : 0),
+              goalOnTarget: state.goalOnTarget + 1,
             };
           });
-          setTargetZone((z) => rerollTarget(z, geom.cols, geom.rows));
+          setTargetZone((zone) => rerollTarget(zone, geom.cols, geom.rows));
           pushPopup(ball.x, ball.y + 30, `+${pts}`, "#FFC53D", "ゴール!!");
         } else {
-          setSession((s) => ({ ...s, score: s.score + pts, goalFrameIn: s.goalFrameIn + 1, combo: 0 }));
-          pushPopup(ball.x, ball.y + 30, `+${pts}`, "#3B9CFF", "枠内");
+          setSession((state) => ({ ...state, goalFrameIn: state.goalFrameIn + 1, combo: 0 }));
+          setTargetZone((zone) => rerollTarget(zone, geom.cols, geom.rows));
+          pushPopup(ball.x, ball.y + 30, "0", "#3B9CFF", "セーブ!");
         }
       }
       function onShotMiss(ball: Ball) {

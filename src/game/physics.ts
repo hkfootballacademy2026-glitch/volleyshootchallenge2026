@@ -116,11 +116,22 @@ export function stepBall(ball: Ball, dt: number, difficulty: Difficulty, screenW
   const cfg = DIFFICULTY_CONFIG[difficulty];
   const g = cfg.gravity * 1600;
 
+  if (ball.netCaught) {
+    const caughtAt = ball.netCaughtAt ?? nowMs;
+    ball.fade = Math.max(0, 1 - (nowMs - caughtAt) / 520);
+    ball.radius = Math.max(ball.radius, (ball.fullRadius ?? ball.radius) * 1.25);
+    return;
+  }
+
   if (ball.kicked) {
     if (ball.curveAx) ball.kickedVx += ball.curveAx * dt;
-    ball.kickedVy += g * 0.35 * dt; // シュートも重力で弧を描く(TARGETモード)
+    ball.kickedVy += g * 0.18 * dt;
     ball.x += ball.kickedVx * dt;
     ball.y += ball.kickedVy * dt;
+    if (ball.shotPending) {
+      const maxRadius = (ball.fullRadius ?? ball.radius) * 1.75;
+      ball.radius = Math.min(maxRadius, ball.radius * (1 + dt * 2.6));
+    }
     return;
   }
 
@@ -148,7 +159,7 @@ export function stepBall(ball: Ball, dt: number, difficulty: Difficulty, screenW
 }
 
 export function isBallOut(ball: Ball, screenW: number, screenH: number): boolean {
-  if (ball.netCaught) return true;
+  if (ball.netCaught) return (ball.fade ?? 1) <= 0;
   if (ball.kind === "FRONT" && !ball.kicked) return ball.fade <= 0;
   return ball.x < -140 || ball.x > screenW + 140 || ball.y > screenH + 140 || ball.y < -240;
 }

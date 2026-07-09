@@ -294,50 +294,57 @@ function FootMarker({ foot }: { foot: { x: number; y: number; speed: number } })
 }
 
 function GoalOverlay({ geom, targetZone }: { geom: any; targetZone: number }) {
-  const cells = [];
   const zw = geom.gw / geom.cols;
-  const zh = geom.gh / geom.rows;
-  for (let c = 0; c < geom.cols; c++) {
-    const isTarget = c === targetZone;
-    cells.push(
-      <Rect
-        key={c}
-        x={geom.gx + c * zw + 4}
-        y={geom.gy + 8}
-        width={zw - 8}
-        height={geom.gh - 14}
-        color={isTarget ? "rgba(255,71,87,0.42)" : "rgba(245,248,255,0.04)"}
-      />
-    );
-  }
-
+  const topY = geom.gy;
+  const bottomY = geom.gy + geom.gh;
   const netLines = [];
-  for (let i = 1; i < 6; i++) {
-    const x = geom.gx + (geom.gw / 6) * i;
-    netLines.push(<Rect key={`v-${i}`} x={x} y={geom.gy + 8} width={1.5} height={geom.gh - 10} color="rgba(245,248,255,0.34)" />);
+  for (let i = 1; i < 8; i++) {
+    const x = geom.gx + (geom.gw / 8) * i;
+    netLines.push(<Rect key={`v-${i}`} x={x} y={topY + 8} width={1.3} height={geom.gh - 8} color="rgba(245,248,255,0.26)" />);
   }
-  for (let i = 1; i < 4; i++) {
-    const y = geom.gy + (geom.gh / 4) * i;
-    netLines.push(<Rect key={`h-${i}`} x={geom.gx + 5} y={y} width={geom.gw - 10} height={1.5} color="rgba(245,248,255,0.34)" />);
+  for (let i = 1; i < 5; i++) {
+    const y = topY + (geom.gh / 5) * i;
+    netLines.push(<Rect key={`h-${i}`} x={geom.gx + 4} y={y} width={geom.gw - 8} height={1.3} color="rgba(245,248,255,0.24)" />);
   }
   for (let i = 1; i < geom.cols; i++) {
     const x = geom.gx + zw * i;
-    netLines.push(<Rect key={`zone-${i}`} x={x - 2} y={geom.gy + 8} width={4} height={geom.gh - 10} color="rgba(255,197,61,0.65)" />);
+    netLines.push(<Rect key={`lane-${i}`} x={x - 1.5} y={topY + 10} width={3} height={geom.gh - 12} color="rgba(31,224,216,0.22)" />);
   }
+
+  const keeperCx = geom.gx + zw * (targetZone + 0.5);
+  const keeperFeetY = bottomY - geom.gh * 0.09;
+  const keeperBodyH = geom.gh * 0.48;
+  const keeperBodyW = Math.min(64, zw * 0.33);
+  const keeperHeadR = Math.min(18, geom.gh * 0.11);
+  const bodyY = keeperFeetY - keeperBodyH;
+  const bodyX = keeperCx - keeperBodyW / 2;
+  const outline = "rgba(2,8,16,0.78)";
+  const keeper = "rgba(31,224,216,0.78)";
+  const glove = "rgba(255,197,61,0.86)";
 
   return (
     <Group>
-      <Rect x={geom.gx - 13} y={geom.gy - 13} width={geom.gw + 26} height={geom.gh + 27} color="rgba(0,0,0,0.38)" />
-      <Rect x={geom.gx} y={geom.gy} width={geom.gw} height={geom.gh} color="rgba(7,16,28,0.48)" />
+      <Rect x={geom.gx - 18} y={topY - 14} width={geom.gw + 36} height={geom.gh + 28} color="rgba(0,0,0,0.22)" />
+      <Rect x={geom.gx} y={topY} width={geom.gw} height={geom.gh} color="rgba(7,16,28,0.22)" />
       {netLines}
-      {cells}
-      <Rect x={geom.gx - 10} y={geom.gy - 11} width={geom.gw + 20} height={10} color="#F7FAFF" />
-      <Rect x={geom.gx - 10} y={geom.gy - 11} width={10} height={geom.gh + 22} color="#F7FAFF" />
-      <Rect x={geom.gx + geom.gw} y={geom.gy - 11} width={10} height={geom.gh + 22} color="#F7FAFF" />
-      <Rect x={geom.gx - 10} y={geom.gy + geom.gh + 8} width={geom.gw + 20} height={5} color="rgba(247,250,255,0.72)" />
-      <Rect x={geom.gx - 13} y={geom.gy - 14} width={geom.gw + 26} height={3} color={COLORS.cyan} opacity={0.9} />
-      <Circle cx={geom.gx - 5} cy={geom.gy - 6} r={8} color="#F7FAFF" />
-      <Circle cx={geom.gx + geom.gw + 5} cy={geom.gy - 6} r={8} color="#F7FAFF" />
+      <Rect x={geom.gx - 10} y={topY - 9} width={geom.gw + 20} height={9} color="rgba(247,250,255,0.78)" />
+      <Rect x={geom.gx - 10} y={topY - 9} width={9} height={geom.gh + 20} color="rgba(247,250,255,0.78)" />
+      <Rect x={geom.gx + geom.gw + 1} y={topY - 9} width={9} height={geom.gh + 20} color="rgba(247,250,255,0.78)" />
+      <Rect x={geom.gx - 12} y={bottomY + 6} width={geom.gw + 24} height={5} color="rgba(247,250,255,0.46)" />
+      <Rect x={geom.gx - 12} y={topY - 12} width={geom.gw + 24} height={3} color={COLORS.cyan} opacity={0.75} />
+
+      <Circle cx={keeperCx} cy={bodyY - keeperHeadR * 0.85} r={keeperHeadR + 4} color={outline} />
+      <Rect x={bodyX - 5} y={bodyY - 4} width={keeperBodyW + 10} height={keeperBodyH * 0.72} color={outline} />
+      <Rect x={keeperCx - keeperBodyW * 0.95} y={bodyY + keeperBodyH * 0.1} width={keeperBodyW * 1.9} height={11} color={outline} />
+      <Circle cx={keeperCx - keeperBodyW} cy={bodyY + keeperBodyH * 0.16} r={9} color={outline} />
+      <Circle cx={keeperCx + keeperBodyW} cy={bodyY + keeperBodyH * 0.16} r={9} color={outline} />
+      <Circle cx={keeperCx} cy={bodyY - keeperHeadR * 0.85} r={keeperHeadR} color={keeper} />
+      <Rect x={bodyX} y={bodyY} width={keeperBodyW} height={keeperBodyH * 0.7} color={keeper} />
+      <Rect x={keeperCx - keeperBodyW * 0.88} y={bodyY + keeperBodyH * 0.13} width={keeperBodyW * 1.76} height={7} color={keeper} />
+      <Circle cx={keeperCx - keeperBodyW} cy={bodyY + keeperBodyH * 0.16} r={6.5} color={glove} />
+      <Circle cx={keeperCx + keeperBodyW} cy={bodyY + keeperBodyH * 0.16} r={6.5} color={glove} />
+      <Rect x={keeperCx - keeperBodyW * 0.38} y={bodyY + keeperBodyH * 0.68} width={keeperBodyW * 0.22} height={keeperBodyH * 0.26} color={keeper} />
+      <Rect x={keeperCx + keeperBodyW * 0.16} y={bodyY + keeperBodyH * 0.68} width={keeperBodyW * 0.22} height={keeperBodyH * 0.26} color={keeper} />
     </Group>
   );
 }

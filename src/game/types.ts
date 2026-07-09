@@ -3,7 +3,7 @@ import { BallType, BallKind, Difficulty } from "./constants";
 export interface FootPoint {
   x: number;
   y: number;
-  speed: number; // px/s (フレーム間の移動距離から算出)
+  speed: number;
   velX: number;
   velY: number;
   side: "L" | "R";
@@ -25,23 +25,22 @@ export interface Ball {
   kickedVy: number;
   touchHinted: boolean;
   fade: number;
-  // 正面ボール専用
   startX?: number;
   startY?: number;
   targetX?: number;
   targetY?: number;
-  p?: number; // 進行度 0-1
+  p?: number;
   flightTime?: number;
   fullRadius?: number;
   instVx?: number;
   instVy?: number;
   ringAt?: number;
-  // ゴールターゲット専用
   shotPending?: boolean;
   shotPerfect?: boolean;
   shotGrounded?: boolean;
   curveAx?: number;
   netCaught?: boolean;
+  netCaughtAt?: number;
 }
 
 export interface GameSessionState {
@@ -71,5 +70,5 @@ export function createInitialSession(): GameSessionState {
 
 export interface ScoreHistoryEntry {
   score: number;
-  date: string; // "M/D"
+  date: string;
 }
