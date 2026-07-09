@@ -56,7 +56,6 @@ export default function AiGameScreen() {
   const resolveRecordingRef = useRef<((replay: VideoReplay | null) => void) | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const replayFrameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const footWaitStartedAtRef = useRef(0);
   const replaySnapshotRef = useRef<{ balls: Ball[]; session: GameSessionState; timeRemaining: number } | null>(null);
 
   const finishReplayRecording = useCallback(async () => {
@@ -173,19 +172,9 @@ export default function AiGameScreen() {
     setStarted(true);
   }, [engine, startReplayRecording]);
 
-  const footVisible = !!detector.feet.left || !!detector.feet.right || detector.diagnostics.leftStrength > 260 || detector.diagnostics.rightStrength > 260;
-  const footReady = detector.diagnostics.frames > 0 && footVisible;
-
   useEffect(() => {
     replaySnapshotRef.current = { balls: engine.balls, session: engine.session, timeRemaining: engine.timeRemaining };
   }, [engine.balls, engine.session, engine.timeRemaining]);
-
-  const beginFootReadyCheck = useCallback(() => {
-    if (countdown !== null || waitingForFoot) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
-    footWaitStartedAtRef.current = Date.now();
-    setWaitingForFoot(true);
-  }, [countdown, waitingForFoot]);
 
   const beginCountdown = useCallback(() => {
     if (countdown !== null) return;
@@ -193,19 +182,10 @@ export default function AiGameScreen() {
     setCountdown(3);
   }, [countdown]);
 
-  useEffect(() => {
-    if (!waitingForFoot || countdown !== null || !footReady) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+  const beginFootReadyCheck = useCallback(() => {
+    if (countdown !== null || waitingForFoot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     beginCountdown();
-  }, [beginCountdown, countdown, footReady, waitingForFoot]);
-
-  useEffect(() => {
-    if (!waitingForFoot || countdown !== null) return;
-    const fallback = setTimeout(() => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-      beginCountdown();
-    }, Math.max(900, 2400 - (Date.now() - footWaitStartedAtRef.current)));
-    return () => clearTimeout(fallback);
   }, [beginCountdown, countdown, waitingForFoot]);
 
   useEffect(() => {
@@ -267,7 +247,6 @@ export default function AiGameScreen() {
           <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready || countdown !== null || waitingForFoot} onPress={beginFootReadyCheck}>
             <Text style={styles.startBtnText}>{countdown !== null ? "READY" : waitingForFoot ? JP.detectingFoot : JP.start}</Text>
           </Pressable>
-          {waitingForFoot && countdown === null && <Text style={styles.status}>{JP.footWaiting}</Text>}
           {countdown !== null && <Text style={styles.countdown}>{countdown === 0 ? "GO" : countdown}</Text>}
           <Pressable style={styles.ghostBtn} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty: diff } })}>
             <Text style={styles.ghostBtnText}>{JP.manual}</Text>
