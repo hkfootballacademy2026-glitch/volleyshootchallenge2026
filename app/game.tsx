@@ -9,7 +9,7 @@ import { Difficulty, GameMode } from "../src/game/constants";
 import { useGameEngine } from "../src/hooks/useGameEngine";
 import { Ball, FootPoint, GameSessionState } from "../src/game/types";
 import type { DetectedFeet } from "../src/hooks/usePoseDetection";
-import { saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
+import { appendReplayFrame, saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const MANUAL_KICK_SPEED = 1250;
@@ -41,6 +41,8 @@ export default function GameScreen() {
   const recordingStartedAtRef = useRef(0);
   const recordingPromiseRef = useRef<Promise<VideoReplay | null> | null>(null);
   const resolveRecordingRef = useRef<((replay: VideoReplay | null) => void) | null>(null);
+  const replayFrameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const replaySnapshotRef = useRef<{ balls: Ball[]; session: GameSessionState; timeRemaining: number } | null>(null);
 
   React.useEffect(() => {
     if (!hasPermission) requestPermission();
@@ -49,6 +51,10 @@ export default function GameScreen() {
   const finishReplayRecording = useCallback(async () => {
     if (!recordingActiveRef.current || !cameraRef.current) return null;
     recordingActiveRef.current = false;
+    if (replayFrameTimerRef.current) {
+      clearInterval(replayFrameTimerRef.current);
+      replayFrameTimerRef.current = null;
+    }
     try {
       await cameraRef.current.stopRecording();
     } catch {
@@ -71,6 +77,14 @@ export default function GameScreen() {
     recordingPromiseRef.current = new Promise((resolve) => {
       resolveRecordingRef.current = resolve;
     });
+    const captureReplayFrame = () => {
+      const snapshot = replaySnapshotRef.current;
+      if (!snapshot) return;
+      appendReplayFrame(Date.now() - recordingStartedAtRef.current, snapshot.balls, snapshot.session, snapshot.timeRemaining);
+    };
+    captureReplayFrame();
+    if (replayFrameTimerRef.current) clearInterval(replayFrameTimerRef.current);
+    replayFrameTimerRef.current = setInterval(captureReplayFrame, 100);
     try {
       cameraRef.current.startRecording({
         fileType: "mp4",
@@ -92,6 +106,10 @@ export default function GameScreen() {
       });
     } catch {
       recordingActiveRef.current = false;
+      if (replayFrameTimerRef.current) {
+        clearInterval(replayFrameTimerRef.current);
+        replayFrameTimerRef.current = null;
+      }
       saveVideoReplay(null);
       resolveRecordingRef.current?.(null);
       resolveRecordingRef.current = null;
@@ -132,6 +150,10 @@ export default function GameScreen() {
     onGameEnd: handleGameEnd,
   });
 
+  React.useEffect(() => {
+    replaySnapshotRef.current = { balls: engine.balls, session: engine.session, timeRemaining: engine.timeRemaining };
+  }, [engine.balls, engine.session, engine.timeRemaining]);
+
   const beginCountdown = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     startReplayRecording();
@@ -159,14 +181,14 @@ export default function GameScreen() {
   if (!hasPermission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.msg}>カメラの許可が必要です</Text>
+        <Text style={styles.msg}>Camera permission is required</Text>
       </View>
     );
   }
   if (!device) {
     return (
       <View style={styles.center}>
-        <Text style={styles.msg}>カメラデバイスが見つかりません</Text>
+        <Text style={styles.msg}>Camera device not found</Text>
       </View>
     );
   }
@@ -201,9 +223,9 @@ export default function GameScreen() {
 
       {!started ? (
         <View style={styles.overlay}>
-          <Text style={styles.overlayTitle}>ゲーム中は画面下をタップ/スワイプしてキックします</Text>
+          <Text style={styles.overlayTitle}>Tap or swipe low on the screen to kick</Text>
           <Pressable style={styles.startBtn} onPress={beginCountdown}>
-            <Text style={styles.startBtnText}>スタート</Text>
+            <Text style={styles.startBtnText}>Start</Text>
           </Pressable>
         </View>
       ) : (
@@ -214,7 +236,7 @@ export default function GameScreen() {
             <HudCell label="HIT" value={String(engine.session.hits)} color={COLORS.white} />
           </View>
           <View pointerEvents="none" style={styles.kickGuide}>
-            <Text style={styles.kickGuideText}>画面下をスワイプしてキック</Text>
+            <Text style={styles.kickGuideText}>Swipe low on the screen to kick</Text>
           </View>
           {engine.popups.map((p) => (
             <View key={p.id} pointerEvents="none" style={[styles.popup, { left: p.x - 36, top: p.y - 48 }]}>

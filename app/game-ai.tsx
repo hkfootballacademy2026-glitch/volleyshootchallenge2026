@@ -8,7 +8,7 @@ import { COLORS } from "../src/theme";
 import { Difficulty, GameMode } from "../src/game/constants";
 import { useGameEngine } from "../src/hooks/useGameEngine";
 import { Ball, GameSessionState } from "../src/game/types";
-import { saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
+import { appendReplayFrame, saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
 import { useLightweightFootDetection } from "../src/hooks/useLightweightFootDetection";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -30,6 +30,8 @@ const JP = {
   frontCamera: "\u524d\u9762\u30ab\u30e1\u30e9",
   backCamera: "\u80cc\u9762\u30ab\u30e1\u30e9",
   switchCamera: "\u30ab\u30e1\u30e9\u5207\u66ff",
+  detectingFoot: "\u8db3\u3092\u691c\u77e5\u4e2d...",
+  footWaiting: "\u8db3\u3092\u753b\u9762\u4e0b\u306b\u5165\u308c\u3066\u304f\u3060\u3055\u3044",
 };
 
 export default function AiGameScreen() {
@@ -38,9 +40,11 @@ export default function AiGameScreen() {
   const gameMode: GameMode = mode === "TARGET" ? "TARGET" : "VOLLEY";
   const diff: Difficulty = (difficulty as Difficulty) || "NORMAL";
   const [started, setStarted] = useState(false);
+  const [waitingForFoot, setWaitingForFoot] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
-  const detector = useLightweightFootDetection(started, cameraPosition);
+  const detectionEnabled = started || waitingForFoot || countdown !== null;
+  const detector = useLightweightFootDetection(detectionEnabled, cameraPosition);
   const format = useCameraFormat(detector.device, [
     { videoResolution: { width: 720, height: 1280 } },
     { fps: 30 },
@@ -51,10 +55,16 @@ export default function AiGameScreen() {
   const recordingPromiseRef = useRef<Promise<VideoReplay | null> | null>(null);
   const resolveRecordingRef = useRef<((replay: VideoReplay | null) => void) | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const replayFrameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const replaySnapshotRef = useRef<{ balls: Ball[]; session: GameSessionState; timeRemaining: number } | null>(null);
 
   const finishReplayRecording = useCallback(async () => {
     if (!recordingActiveRef.current || !cameraRef.current) return null;
     recordingActiveRef.current = false;
+    if (replayFrameTimerRef.current) {
+      clearInterval(replayFrameTimerRef.current);
+      replayFrameTimerRef.current = null;
+    }
     try {
       await cameraRef.current.stopRecording();
     } catch {
@@ -77,6 +87,14 @@ export default function AiGameScreen() {
     recordingPromiseRef.current = new Promise((resolve) => {
       resolveRecordingRef.current = resolve;
     });
+    const captureReplayFrame = () => {
+      const snapshot = replaySnapshotRef.current;
+      if (!snapshot) return;
+      appendReplayFrame(Date.now() - recordingStartedAtRef.current, snapshot.balls, snapshot.session, snapshot.timeRemaining);
+    };
+    captureReplayFrame();
+    if (replayFrameTimerRef.current) clearInterval(replayFrameTimerRef.current);
+    replayFrameTimerRef.current = setInterval(captureReplayFrame, 100);
     try {
       cameraRef.current.startRecording({
         fileType: "mp4",
@@ -98,6 +116,10 @@ export default function AiGameScreen() {
       });
     } catch {
       recordingActiveRef.current = false;
+      if (replayFrameTimerRef.current) {
+        clearInterval(replayFrameTimerRef.current);
+        replayFrameTimerRef.current = null;
+      }
       saveVideoReplay(null);
       resolveRecordingRef.current?.(null);
       resolveRecordingRef.current = null;
@@ -139,21 +161,40 @@ export default function AiGameScreen() {
   });
 
   const toggleCamera = useCallback(() => {
-    if (started || countdown !== null) return;
+    if (started || countdown !== null || waitingForFoot) return;
     setCameraPosition((value) => (value === "front" ? "back" : "front"));
-  }, [started, countdown]);
+  }, [started, countdown, waitingForFoot]);
 
   const beginGame = useCallback(() => {
     startReplayRecording();
     engine.start();
+    setWaitingForFoot(false);
     setStarted(true);
   }, [engine, startReplayRecording]);
 
+  const footReady = detector.diagnostics.leftStrength > 650 || detector.diagnostics.rightStrength > 650;
+
+  useEffect(() => {
+    replaySnapshotRef.current = { balls: engine.balls, session: engine.session, timeRemaining: engine.timeRemaining };
+  }, [engine.balls, engine.session, engine.timeRemaining]);
+
+  const beginFootReadyCheck = useCallback(() => {
+    if (countdown !== null || waitingForFoot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setWaitingForFoot(true);
+  }, [countdown, waitingForFoot]);
+
   const beginCountdown = useCallback(() => {
     if (countdown !== null) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setWaitingForFoot(false);
     setCountdown(3);
   }, [countdown]);
+
+  useEffect(() => {
+    if (!waitingForFoot || countdown !== null || !footReady) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    beginCountdown();
+  }, [beginCountdown, countdown, footReady, waitingForFoot]);
 
   useEffect(() => {
     if (countdown === null) return;
@@ -211,9 +252,10 @@ export default function AiGameScreen() {
             <Text style={styles.cameraBtnText}>{JP.switchCamera}: {cameraPosition === "front" ? JP.frontCamera : JP.backCamera}</Text>
           </Pressable>
           {!!detector.initError && <Text style={styles.error}>{detector.initError}</Text>}
-          <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready || countdown !== null} onPress={beginCountdown}>
-            <Text style={styles.startBtnText}>{countdown !== null ? "READY" : JP.start}</Text>
+          <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready || countdown !== null || waitingForFoot} onPress={beginFootReadyCheck}>
+            <Text style={styles.startBtnText}>{countdown !== null ? "READY" : waitingForFoot ? JP.detectingFoot : JP.start}</Text>
           </Pressable>
+          {waitingForFoot && countdown === null && <Text style={styles.status}>{JP.footWaiting}</Text>}
           {countdown !== null && <Text style={styles.countdown}>{countdown === 0 ? "GO" : countdown}</Text>}
           <Pressable style={styles.ghostBtn} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty: diff } })}>
             <Text style={styles.ghostBtnText}>{JP.manual}</Text>
