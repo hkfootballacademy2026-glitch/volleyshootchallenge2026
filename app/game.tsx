@@ -8,7 +8,7 @@ import { COLORS } from "../src/theme";
 import { Difficulty, GameMode } from "../src/game/constants";
 import { useGameEngine } from "../src/hooks/useGameEngine";
 import { Ball, FootPoint, GameSessionState } from "../src/game/types";
-import type { DetectedFeet } from "../src/hooks/usePoseDetection";
+import type { DetectedFeet } from "../src/game/types";
 import { appendReplayFrame, saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");

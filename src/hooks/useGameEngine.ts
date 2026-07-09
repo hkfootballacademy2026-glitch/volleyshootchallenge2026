@@ -1,10 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Difficulty, GameMode, DIFFICULTY_CONFIG, BALL_TYPE_CONFIG } from "../game/constants";
-import { Ball, FootPoint, GameSessionState, createInitialSession } from "../game/types";
+import { Ball, FootPoint, GameSessionState, createInitialSession, DetectedFeet } from "../game/types";
 import { spawnBall, stepBall, isBallOut, resetBallIdCounter } from "../game/physics";
 import { checkKick, calcKickScore, calcBlackPenalty, calcBlackThroughBonus } from "../game/kickDetection";
 import { resolveShotVector, goalGeometry, resolveShotOutcome, rerollTarget } from "../game/goalTarget";
-import type { DetectedFeet } from "./usePoseDetection";
 
 export type PopupEvent = { id: number; x: number; y: number; text: string; sub?: string; color: string; bornAt: number };
 

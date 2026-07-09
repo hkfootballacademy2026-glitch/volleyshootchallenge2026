@@ -3,7 +3,7 @@ import { useTensorflowModel } from "react-native-fast-tflite";
 import { useFrameProcessor, useCameraDevice, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useResizePlugin } from "vision-camera-resize-plugin";
-import { FootPoint } from "../game/types";
+import { FootPoint, DetectedFeet } from "../game/types";
 import { calcFootVelocity } from "../game/kickDetection";
 
 // MoveNet Lightning output layout: [1, 1, 17, 3] = (y, x, score) for 17 keypoints.
@@ -11,11 +11,6 @@ const KP = { L_ANKLE: 15, R_ANKLE: 16 };
 const CONFIDENCE_THRESHOLD = 0.4;
 const MODEL_SIZE = 192;
 const REQUIRED_KEYPOINT_VALUES = 17 * 3;
-
-export interface DetectedFeet {
-  left: FootPoint | null;
-  right: FootPoint | null;
-}
 
 interface RawFootHistory {
   x: number;

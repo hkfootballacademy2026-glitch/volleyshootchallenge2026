@@ -10,6 +10,11 @@ export interface FootPoint {
   hitRadiusScale?: number;
 }
 
+export interface DetectedFeet {
+  left: FootPoint | null;
+  right: FootPoint | null;
+}
+
 export interface Ball {
   id: number;
   kind: BallKind;

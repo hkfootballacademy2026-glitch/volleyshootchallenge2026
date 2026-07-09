@@ -4,6 +4,7 @@ import { checkKick, calcKickScore, calcBlackPenalty, calcBlackThroughBonus, calc
 import { resolveShotVector, goalGeometry, resolveShotOutcome, rerollTarget } from "../src/game/goalTarget";
 import { FootPoint, Ball } from "../src/game/types";
 import { KICK_MIN_SPEED, PERFECT_FOOT_SPEED } from "../src/game/constants";
+import { evaluatePositioning } from "../src/game/positioning";
 
 const SCREEN_W = 400, SCREEN_H = 800;
 
@@ -103,6 +104,12 @@ describe("kickDetection: タッチ/キック/PERFECTの3段階", () => {
     };
   }
 
+  it("速度0の静止足でもボール半径内なら『タッチ』になる", () => {
+    const ball = mkBall();
+    const foot = mkFoot(200, 400, 0);
+    const result = checkKick(ball, foot, "NORMAL");
+    expect(result.kind).toBe("touch");
+  });
   it("足の速度が閾値未満なら『タッチ』で無得点", () => {
     const ball = mkBall();
     const foot = mkFoot(200, 400, KICK_MIN_SPEED - 50);
@@ -238,33 +245,33 @@ describe("goalTarget: シュート方向のミートポイント支配", () => {
     };
   }
 
-  it("ボールの下を叩くと上方向へ飛ぶ", () => {
+  it("ボールの下を叩くとカメラ手前のゴール方向へ飛ぶ", () => {
     const ball = mkBall(200, 400);
     const foot = mkFoot(200, 450, 1500, 0, -1200); // ボールの下からミート
     const shot = resolveShotVector(ball, foot);
-    expect(shot.vy).toBeLessThan(0);
+    expect(shot.vy).toBeGreaterThan(0);
     expect(Math.abs(shot.vx)).toBeLessThan(Math.abs(shot.vy) * 0.6);
   });
 
-  it("ボールの左下を叩くと右上へ飛ぶ", () => {
+  it("ボールの左下を叩くと右コースへ飛ぶ", () => {
     const ball = mkBall(200, 400);
     const foot = mkFoot(160, 450, 1500, 150, -1200);
     const shot = resolveShotVector(ball, foot);
     expect(shot.vx).toBeGreaterThan(0);
-    expect(shot.vy).toBeLessThan(0);
+    expect(shot.vy).toBeGreaterThan(0);
   });
 
-  it("ボールの右下を叩くと左上へ飛ぶ", () => {
+  it("ボールの右下を叩くと左コースへ飛ぶ", () => {
     const ball = mkBall(200, 400);
     const foot = mkFoot(240, 450, 1500, -150, -1200);
     const shot = resolveShotVector(ball, foot);
     expect(shot.vx).toBeLessThan(0);
-    expect(shot.vy).toBeLessThan(0);
+    expect(shot.vy).toBeGreaterThan(0);
   });
 
-  it("ボールの上にかぶせる(振り上げ不足)と grounded=true で届かない", () => {
+  it("弱いスイングは grounded=true になる", () => {
     const ball = mkBall(200, 400);
-    const foot = mkFoot(200, 350, 1500, 0, 800); // ボールの上・下向きスイング
+    const foot = mkFoot(200, 350, 400, 0, 320);
     const shot = resolveShotVector(ball, foot);
     expect(shot.grounded).toBe(true);
   });
@@ -289,7 +296,7 @@ describe("goalTarget: ゴール判定とゾーン分割", () => {
     expect(hard.rows).toBe(1);
   });
 
-  it("ターゲットゾーンに入ったシュートは goal 判定になる", () => {
+  it("キーパー正面に入ったシュートは save 判定になる", () => {
     const geom = goalGeometry(400, 800, "NORMAL");
     // 左ゾーンの中心付近にシュート
     const ball: Ball = {
@@ -298,18 +305,18 @@ describe("goalTarget: ゴール判定とゾーン分割", () => {
       kickedVx: 0, kickedVy: -2000, touchHinted: false, fade: 1,
     };
     const outcome = resolveShotOutcome(ball, geom, 0);
-    expect(outcome.kind).toBe("goal");
+    expect(outcome.kind).toBe("save");
   });
 
-  it("違うゾーンに入ると frame(枠内)判定になる", () => {
+  it("キーパーがいないゾーンに入ると goal 判定になる", () => {
     const geom = goalGeometry(400, 800, "NORMAL");
     const ball: Ball = {
       id: 1, kind: "SIDE", x: geom.gx + geom.gw * 0.75, y: 0, vx: 0, vy: 0,
       radius: 20, type: "NORMAL", active: true, kicked: true,
       kickedVx: 0, kickedVy: -2000, touchHinted: false, fade: 1,
     };
-    const outcome = resolveShotOutcome(ball, geom, 0); // ターゲットは左だが右に着弾
-    expect(outcome.kind).toBe("frame");
+    const outcome = resolveShotOutcome(ball, geom, 0); // キーパーは左、右に着弾
+    expect(outcome.kind).toBe("goal");
   });
 
   it("枠外に外れると miss 判定になる", () => {
@@ -329,5 +336,50 @@ describe("goalTarget: ゴール判定とゾーン分割", () => {
       expect(next).not.toBe(zone);
       zone = next;
     }
+  });
+});
+
+describe("positioning: Web版仕様", () => {
+  it("両足を1200ms保持するとカウント開始できる", () => {
+    let stableSince = 0;
+    const first = evaluatePositioning({
+      now: 1000,
+      hasLeftFoot: true,
+      hasRightFoot: true,
+      lastDetectionAt: 950,
+      state: { stableSince, startedAt: 1000 },
+    });
+    expect(first.shouldStartCountdown).toBe(false);
+    stableSince = first.stableSince;
+
+    const second = evaluatePositioning({
+      now: 2200,
+      hasLeftFoot: true,
+      hasRightFoot: true,
+      lastDetectionAt: 2150,
+      state: { stableSince, startedAt: 1000 },
+    });
+    expect(second.shouldStartCountdown).toBe(true);
+    expect(second.message).toBe("OK! そのまま動かないで…");
+  });
+
+  it("1000msで片足が消えると保持タイマーをリセットする", () => {
+    const first = evaluatePositioning({
+      now: 1000,
+      hasLeftFoot: true,
+      hasRightFoot: true,
+      lastDetectionAt: 950,
+      state: { stableSince: 0, startedAt: 1000 },
+    });
+    const lost = evaluatePositioning({
+      now: 2000,
+      hasLeftFoot: true,
+      hasRightFoot: false,
+      lastDetectionAt: 1950,
+      state: { stableSince: first.stableSince, startedAt: 1000 },
+    });
+    expect(lost.shouldStartCountdown).toBe(false);
+    expect(lost.stableSince).toBe(0);
+    expect(lost.message).toBe("足元までカメラに映るように下がってください");
   });
 });

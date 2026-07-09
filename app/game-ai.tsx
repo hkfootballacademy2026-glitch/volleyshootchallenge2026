@@ -10,6 +10,7 @@ import { useGameEngine } from "../src/hooks/useGameEngine";
 import { Ball, GameSessionState } from "../src/game/types";
 import { appendReplayFrame, saveVideoReplay, VideoReplay } from "../src/replay/videoReplayStore";
 import { useLightweightFootDetection } from "../src/hooks/useLightweightFootDetection";
+import { evaluatePositioning } from "../src/game/positioning";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const BALL_IMAGES: Record<Ball["type"], ImageSourcePropType> = {
@@ -42,6 +43,7 @@ export default function AiGameScreen() {
   const [started, setStarted] = useState(false);
   const [waitingForFoot, setWaitingForFoot] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [posMsg, setPosMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
   const detectionEnabled = started || waitingForFoot || countdown !== null;
   const detector = useLightweightFootDetection(detectionEnabled, cameraPosition);
@@ -55,6 +57,8 @@ export default function AiGameScreen() {
   const recordingPromiseRef = useRef<Promise<VideoReplay | null> | null>(null);
   const resolveRecordingRef = useRef<((replay: VideoReplay | null) => void) | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stableSinceRef = useRef(0);
+  const positioningStartedAtRef = useRef(0);
   const replayFrameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const replaySnapshotRef = useRef<{ balls: Ball[]; session: GameSessionState; timeRemaining: number } | null>(null);
 
@@ -178,28 +182,50 @@ export default function AiGameScreen() {
 
   const beginCountdown = useCallback(() => {
     if (countdown !== null) return;
+    stableSinceRef.current = 0;
     setWaitingForFoot(false);
+    setPosMsg(null);
     setCountdown(3);
   }, [countdown]);
 
   const beginFootReadyCheck = useCallback(() => {
     if (countdown !== null || waitingForFoot) return;
+    stableSinceRef.current = 0;
+    positioningStartedAtRef.current = Date.now();
+    setPosMsg({ text: "全身がカメラに映る位置に立ってください", ok: false });
+    setWaitingForFoot(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
-    beginCountdown();
-  }, [beginCountdown, countdown, waitingForFoot]);
+  }, [countdown, waitingForFoot]);
+
+  useEffect(() => {
+    if (!waitingForFoot) return;
+    const interval = setInterval(() => {
+      const result = evaluatePositioning({
+        now: Date.now(),
+        hasLeftFoot: !!detector.feet.left,
+        hasRightFoot: !!detector.feet.right,
+        lastDetectionAt: detector.lastDetectionAt,
+        state: { stableSince: stableSinceRef.current, startedAt: positioningStartedAtRef.current },
+      });
+      stableSinceRef.current = result.stableSince;
+      setPosMsg({ text: result.message, ok: result.ok });
+      if (result.shouldStartCountdown) beginCountdown();
+    }, 200);
+    return () => clearInterval(interval);
+  }, [beginCountdown, detector.feet.left, detector.feet.right, detector.lastDetectionAt, waitingForFoot]);
 
   useEffect(() => {
     if (countdown === null) return;
     if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
     countdownTimerRef.current = setTimeout(() => {
-      if (countdown > 0) {
+      if (countdown > 1) {
         setCountdown(countdown - 1);
         Haptics.selectionAsync().catch(() => undefined);
         return;
       }
       setCountdown(null);
       beginGame();
-    }, countdown > 0 ? 800 : 350);
+    }, 1000);
     return () => {
       if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
     };
@@ -247,7 +273,8 @@ export default function AiGameScreen() {
           <Pressable style={[styles.startBtn, !detector.ready && styles.disabled]} disabled={!detector.ready || countdown !== null || waitingForFoot} onPress={beginFootReadyCheck}>
             <Text style={styles.startBtnText}>{countdown !== null ? "READY" : waitingForFoot ? JP.detectingFoot : JP.start}</Text>
           </Pressable>
-          {countdown !== null && <Text style={styles.countdown}>{countdown === 0 ? "GO" : countdown}</Text>}
+          {posMsg && <Text style={[styles.positionMsg, posMsg.ok && styles.positionMsgOk]}>{posMsg.text}</Text>}
+          {countdown !== null && <Text style={styles.countdown}>{countdown}</Text>}
           <Pressable style={styles.ghostBtn} onPress={() => router.replace({ pathname: "/game", params: { mode: gameMode, difficulty: diff } })}>
             <Text style={styles.ghostBtnText}>{JP.manual}</Text>
           </Pressable>
@@ -394,6 +421,8 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   startBtnText: { color: COLORS.navy, fontWeight: "900", fontSize: 16 },
   countdown: { color: COLORS.gold, fontSize: 72, fontWeight: "900", marginTop: 4 },
+  positionMsg: { color: COLORS.white, fontSize: 14, lineHeight: 21, fontWeight: "900", textAlign: "center", backgroundColor: "rgba(7,9,15,0.58)", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, overflow: "hidden" },
+  positionMsgOk: { color: COLORS.cyan },
   cameraBtn: { borderWidth: 1, borderColor: COLORS.cyan, borderRadius: 10, paddingVertical: 11, paddingHorizontal: 20, backgroundColor: "rgba(31,224,216,0.12)" },
   cameraBtnText: { color: COLORS.white, fontWeight: "900" },
   ghostBtn: { borderWidth: 1, borderColor: COLORS.line, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: "rgba(7,9,15,0.5)" },
